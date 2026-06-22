@@ -1,0 +1,61 @@
+# Variant registry — SINGLE SOURCE OF TRUTH for model variants.
+# ids MUST match qquant.registry.VARIANT_IDS exactly. quant_method drives loader dispatch.
+# Pinned revisions are the verified Qwen checkpoint commit SHAs (see decision-log.md).
+model_base: Qwen/Qwen2.5-7B-Instruct
+
+variants:
+  bf16:
+    quant_method: bf16
+    source: baseline
+    enabled: true
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    notes: "BF16 baseline (~15GB weights); fits 24GB on a single GPU. dtype=bfloat16."
+
+  bnb-int8:
+    quant_method: bnb-int8
+    source: load-time
+    enabled: true
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    notes: "LLM.int8() via BitsAndBytesConfig(load_in_8bit=True). Often slower than bf16."
+
+  bnb-nf4:
+    quant_method: bnb-nf4
+    source: load-time
+    enabled: true
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    notes: "4-bit NF4 + double-quant. MUST set bnb_4bit_compute_dtype=bfloat16 (defaults fp32)."
+
+  gptq-official:
+    quant_method: gptq
+    source: official
+    enabled: true
+    model_id: Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4
+    revision: e9c932ac1893a49ae0fc497ad6e1e86e2e39af20
+    notes: "Official Qwen GPTQ-Int4 (group_size=128). Loaded via gptqmodel + optimum."
+
+  awq-official:
+    quant_method: awq
+    source: official
+    enabled: true   # CONTINGENT: set false if the sm_89 AWQ load smoke test (Spec 05) fails.
+    model_id: Qwen/Qwen2.5-7B-Instruct-AWQ
+    revision: b25037543e9394b818fdfca67ab2a00ecc7dd641
+    notes: "Official Qwen AWQ (gemm, g128). NEVER install autoawq (archived; downgrades transformers)."
+
+  gptq-selfquant:
+    quant_method: compressed-tensors
+    source: selfquant
+    enabled: true
+    model_id: "local:checkpoints/self-quant/gptq-selfquant"
+    revision: null
+    notes: "llm-compressor GPTQ W4A16_ASYM from the shared C4 calibration. Quality-fair, speed-confounded."
+
+  awq-selfquant:
+    quant_method: compressed-tensors
+    source: selfquant
+    enabled: true
+    model_id: "local:checkpoints/self-quant/awq-selfquant"
+    revision: null
+    notes: "Guaranteed AWQ data point. llm-compressor AWQ W4A16_ASYM from the SAME C4 calibration."

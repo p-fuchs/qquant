@@ -1,0 +1,24 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets / local env
+.env
+*.local
+
+# Experiment outputs (large; regenerated)
+results/
+!tests/**/results/
+checkpoints/
+hf_cache/
+*.log
+
+# OS
+.DS_Store

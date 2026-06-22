@@ -1,0 +1,211 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+
+% ---------- Hyperlink style ----------
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue!50!black,
+    citecolor=blue!50!black
+}
+
+% ---------- Spacing ----------
+\titlespacing*{\section}{0pt}{1.0ex}{0.4ex}
+\titlespacing*{\subsection}{0pt}{0.8ex}{0.3ex}
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parskip}{0.4ex}
+
+% ---------- Citation shortcut ----------
+% Usage: \cit{Author et al., Year}{arxiv-id}
+\newcommand{\cit}[2]{\href{https://arxiv.org/abs/#2}{#1}}
+
+% ---------- Title ----------
+\title{\vspace{-2.5em}\textbf{Project Proposal:\\Quantization for Efficient LLM Inference}}
+\author{Hubert Michalski \quad Przemysław Fuchs}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+% Context and Motivation
+% ============================================================
+\section{Context and Motivation}
+
+Quantization is widely used because many LLMs are too expensive to run in full precision, especially on limited GPU memory. A lower-precision model can fit on cheaper hardware, allow larger batch sizes, or support longer contexts. However, quantization is not automatically better. A 4-bit model may use much less memory, but it may also lose accuracy, become slower in some runtimes, or fail more often on tasks that require reasoning or precise instruction following.
+
+The literature provides several practical post-training methods. LLM.int8() \cit{Dettmers et al., 2022}{2208.07339} enables 8-bit weight loading with mixed-precision outlier handling. GPTQ \cit{Frantar et al., 2022}{2210.17323} and AWQ \cit{Lin et al., 2023}{2306.00978} use small calibration sets to push weights down to 4 bits with limited quality loss. SmoothQuant \cit{Xiao et al., 2022}{2211.10438} additionally targets activations to enable W8A8 inference. For 4-bit storage, the NF4 data type introduced together with QLoRA \cit{Dettmers et al., 2023}{2305.14314} is the standard choice in the \texttt{bitsandbytes} ecosystem and has been shown to recover most quality through LoRA \cit{Hu et al., 2021}{2106.09685} adapters. More recent work targets the KV cache itself, e.g.\ KIVI \cit{Liu et al., 2024}{2402.02750}.
+
+This project focuses on the practical trade-off these methods introduce. We will compare a full-precision baseline with several post-training quantization methods and measure both model quality and serving behavior. The project is valid even if the most aggressive method performs worse than the baseline, as long as we can clearly show where the degradation appears and whether the efficiency gains justify it.
+
+% ============================================================
+% Research Questions
+% ============================================================
+\section{Research Questions}
+
+\begin{enumerate}
+    \item Which quantization method gives the best quality--memory--speed trade-off for a 7B-class instruction-tuned LLM?
+    \item Are some capabilities more sensitive to quantization than others (reasoning, coding, QA, instruction following)?
+    \item Does quantization improve real inference speed, or does it mainly reduce memory usage?
+    \item \emph{Optional:} can light QLoRA-style adaptation recover part of the quality lost after 4-bit quantization?
+\end{enumerate}
+
+% ============================================================
+% Core Experimental Setup
+% ============================================================
+\section{Core Experimental Setup}
+
+\subsection{Main model}
+The core experiments use one 7B-class instruction-tuned model:
+\textbf{Qwen2.5-7B-Instruct} \cit{Qwen Team, 2024}{2412.15115}.
+This keeps the project manageable and reduces uncontrolled variables. If time allows, we may repeat a subset of experiments on \textbf{Mistral-7B-Instruct} \cit{Jiang et al., 2023}{2310.06825} to check whether the conclusions generalize.
+
+\subsection{Quantization variants}
+We compare the following quantization methods. For calibration-based methods (GPTQ, AWQ), we will use the same small calibration set across methods that require calibration. This should make the comparison fairer.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{3.6cm} p{8.2cm} l}
+\toprule
+\textbf{Variant} & \textbf{Description} & \textbf{Priority} \\
+\midrule
+FP16 / BF16 baseline      & Full/half-precision reference model                                                                  & Core \\
+8-bit                     & LLM.int8() \cit{Dettmers et al., 2022}{2208.07339} or equivalent 8-bit loading                       & Core \\
+4-bit NF4                 & \texttt{bitsandbytes} 4-bit loading with NF4 \cit{Dettmers et al., 2023}{2305.14314}                  & Core \\
+4-bit GPTQ                & Post-training quantization with calibration \cit{Frantar et al., 2022}{2210.17323}                   & Core \\
+4-bit AWQ                 & Activation-aware post-training quantization \cit{Lin et al., 2023}{2306.00978}                       & Core \\
+W8A8 / SmoothQuant        & Quantized weights and activations \cit{Xiao et al., 2022}{2211.10438}                                & Optional \\
+Quantized KV cache        & Lower-precision KV cache for long-context inference \cit{Liu et al., 2024}{2402.02750}               & Optional \\
+QLoRA adaptation          & LoRA \cit{Hu et al., 2021}{2106.09685} adapters trained on top of a 4-bit model                      & Optional \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+% Evaluation Plan
+% ============================================================
+\section{Evaluation Plan}
+
+\subsection{Quality metrics}
+We evaluate each model variant on a small set of benchmarks covering different capabilities. The exact list can be adjusted depending on runtime.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{3.8cm} p{6.4cm} p{4.0cm}}
+\toprule
+\textbf{Capability} & \textbf{Dataset / benchmark} & \textbf{Metric} \\
+\midrule
+General knowledge / QA    & MMLU \cit{Hendrycks et al., 2020}{2009.03300}        & Accuracy \\
+Mathematical reasoning    & GSM8K \cit{Cobbe et al., 2021}{2110.14168}           & Accuracy / exact match \\
+Code generation           & HumanEval \cit{Chen et al., 2021}{2107.03374}        & pass@1 \\
+Instruction following     & IFEval \cit{Zhou et al., 2023}{2311.07911}           & Prompt-level acc.\ \\
+Judge reliability \emph{(opt.)}
+& JudgeBench \cit{Tan et al., 2024}{2410.12784}
+& Pairwise judge accuracy \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The core set is MMLU, GSM8K, HumanEval, and IFEval. More will be added if time allows.
+
+\subsection{Efficiency metrics}
+For each model variant, we measure:
+\begin{itemize}
+    \item model size on disk;
+    \item peak GPU memory during loading;
+    \item peak GPU memory during generation;
+    \item prefill throughput;
+    \item decode throughput;
+    \item end-to-end latency;
+    \item maximum batch size before OOM;
+    \item behavior under short, medium, and long prompts.
+\end{itemize}
+
+These measurements matter because lower memory usage does not always imply faster inference. In some settings, quantization only helps fit the model into memory. In others, it improves throughput by reducing memory traffic or allowing larger batches.
+
+% ============================================================
+% Planned Experiments
+% ============================================================
+% \section{Planned Experiments}
+
+% \subsection{Experiment 1: Baseline quality and performance}
+% First, we run the FP16/BF16 model and record quality scores, memory usage, and speed. This is the reference point for all later comparisons.
+
+% \textit{Deliverables:} baseline benchmark table; baseline memory and speed measurements; fixed generation and evaluation configuration.
+
+% \subsection{Experiment 2: Weight quantization comparison}
+% Next, we compare 8-bit and 4-bit weight quantization methods against the baseline. The main comparison is between quality loss and memory savings.
+
+% \textit{Deliverables:} quality-metric table per quantization method; memory and speed table; quality--memory and quality--throughput plots; short explanation of which method gives the best trade-off.
+
+% \subsection{Experiment 3: Capability-level degradation}
+% We analyze whether quantization affects all benchmark groups equally. For example, a method may preserve MMLU accuracy but lose more on GSM8K or HumanEval.
+
+% \textit{Deliverables:} per-benchmark degradation table relative to the baseline; short qualitative discussion of the most affected capability; failure examples when useful.
+
+% \subsection{Experiment 4: Long-context and KV cache behavior}
+% If time allows, we test longer prompts and larger batch sizes. This experiment checks whether the KV cache becomes a bottleneck and whether quantized KV cache \cit{Liu et al., 2024}{2402.02750} helps.
+
+% \textit{Deliverables:} memory and throughput results for different context lengths; maximum stable batch size for selected variants; recommendation for when KV cache quantization is useful.
+
+% \subsection{Experiment 5: QLoRA-style recovery (optional)}
+% As an optional extension, we take the best 4-bit variant and train a small LoRA \cit{Hu et al., 2021}{2106.09685} adapter on a selected task, most likely GSM8K \cit{Cobbe et al., 2021}{2110.14168}. The goal is to check whether light adaptation \cit{Dettmers et al., 2023}{2305.14314} can recover part of the quality lost during quantization.
+
+% \textit{Deliverables:} adapter checkpoint; before/after quality comparison; short discussion of whether the recovery is worth the extra training cost.
+
+% ============================================================
+% Expected Results
+% ============================================================
+\section{Expected Results}
+
+We expect 8-bit quantization to stay close to the full-precision baseline in quality while reducing memory usage. We expect 4-bit methods to save more memory, but with a higher risk of quality loss. GPTQ and AWQ may perform better than simple 4-bit loading because they use calibration, but this has to be tested under the same setup. The final recommendation will depend on the full trade-off between quality, memory, and speed.
+
+% ============================================================
+% Final Deliverables
+% ============================================================
+% \section{Final Deliverables}
+
+% \begin{itemize}
+%     \item a short report describing setup, results, and conclusions;
+%     \item scripts and configuration files needed to reproduce the experiments;
+%     \item one main comparison table for all model variants;
+%     \item plots for quality vs.\ memory and quality vs.\ throughput;
+%     \item a recommendation for the best default quantization method under limited VRAM;
+%     \item optional QLoRA adapter or KV-cache experiment results, if completed.
+% \end{itemize}
+
+% ============================================================
+% Minimal Scope and Extensions
+% ============================================================
+\section{Minimal Scope and Extensions}
+
+\textbf{Minimal successful version:}
+\begin{itemize}
+    \item one model: Qwen2.5-7B-Instruct \cit{Qwen Team, 2024}{2412.15115};
+    \item five variants: baseline, 8-bit, 4-bit NF4, GPTQ, AWQ;
+    \item four benchmarks: MMLU \cit{Hendrycks et al., 2020}{2009.03300}, GSM8K \cit{Cobbe et al., 2021}{2110.14168}, HumanEval \cit{Chen et al., 2021}{2107.03374}, IFEval \cit{Zhou et al., 2023}{2311.07911};
+    \item memory and speed measurements for each variant.
+\end{itemize}
+
+\textbf{Extensions:}
+\begin{itemize}
+    \item add Mistral-7B-Instruct \cit{Jiang et al., 2023}{2310.06825} as a second model;
+    \item add JudgeBench \cit{Tan et al., 2024}{2410.12784};
+    \item add W8A8 / SmoothQuant \cit{Xiao et al., 2022}{2211.10438};
+    \item add quantized KV cache \cit{Liu et al., 2024}{2402.02750};
+    \item add QLoRA-style adaptation \cit{Dettmers et al., 2023}{2305.14314}.
+\end{itemize}
+
+\end{document}
+

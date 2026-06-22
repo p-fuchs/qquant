@@ -1,0 +1,56 @@
+# Task registry — SINGLE SOURCE OF TRUTH for benchmark tasks and their locked eval config.
+# metric_keys are tried in order against the lm-eval results dict (handles key suffix drift).
+tasks:
+  mmlu:
+    lm_eval_task: mmlu
+    primary_metric: acc
+    metric_keys: ["acc,none", "acc"]
+    per_subject: true            # expands to 57 per-subject cells (mmlu_<subject>)
+    apply_chat_template: true
+    fewshot_as_multiturn: true
+    num_fewshot: 5
+    default_batch_size: 4
+    batch_overrides:             # smaller batch where the logits transient (vocab 152064) is large
+      bf16: 2
+      bnb-int8: 2
+    code_exec: false
+    max_gen_toks: null
+
+  gsm8k:
+    lm_eval_task: gsm8k
+    primary_metric: exact_match
+    metric_keys: ["exact_match,strict-match", "exact_match,flexible-extract", "exact_match"]
+    per_subject: false
+    apply_chat_template: true
+    fewshot_as_multiturn: true
+    num_fewshot: 5
+    default_batch_size: 4
+    batch_overrides: {}
+    code_exec: false
+    max_gen_toks: 512
+
+  humaneval:
+    lm_eval_task: humaneval_instruct   # instruct-format + fenced-code extraction
+    primary_metric: pass@1
+    metric_keys: ["pass@1,create_test", "pass@1,none", "pass@1"]
+    per_subject: false
+    apply_chat_template: true
+    fewshot_as_multiturn: false
+    num_fewshot: 0
+    default_batch_size: 4
+    batch_overrides: {}
+    code_exec: true                    # needs HF_ALLOW_CODE_EVAL=1 + QQUANT_ALLOW_CODE_EXEC=1
+    max_gen_toks: 1024
+
+  ifeval:
+    lm_eval_task: ifeval
+    primary_metric: prompt_level_strict_acc
+    metric_keys: ["prompt_level_strict_acc,none", "prompt_level_strict_acc"]
+    per_subject: false
+    apply_chat_template: true
+    fewshot_as_multiturn: false
+    num_fewshot: 0
+    default_batch_size: 4
+    batch_overrides: {}
+    code_exec: false                   # needs langdetect seed + nltk punkt data (bootstrap)
+    max_gen_toks: 1280

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qquant.local/schemas/cell_result.schema.json",
+  "title": "qquant cell result",
+  "description": "One (variant, task[, subject]) result cell. schema_version 1.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "cell_id",
+    "variant",
+    "task",
+    "primary_metric",
+    "metric_value",
+    "n_samples",
+    "config"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "cell_id": { "type": "string", "minLength": 1 },
+    "variant": { "type": "string" },
+    "task": { "type": "string" },
+    "subject": { "type": ["string", "null"] },
+    "task_lm_eval": { "type": "string" },
+    "primary_metric": { "type": "string" },
+    "metric_value": { "type": "number" },
+    "metric_stderr": { "type": ["number", "null"] },
+    "n_samples": { "type": "integer", "minimum": 1 },
+    "extra_metrics": { "type": "object" },
+    "config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "seeds",
+        "batch_size",
+        "num_fewshot",
+        "apply_chat_template",
+        "fewshot_as_multiturn",
+        "max_length",
+        "lm_eval_version",
+        "model_revision"
+      ],
+      "properties": {
+        "seeds": { "type": "object" },
+        "batch_size": { "type": "integer" },
+        "num_fewshot": { "type": "integer" },
+        "apply_chat_template": { "type": "boolean" },
+        "fewshot_as_multiturn": { "type": "boolean" },
+        "max_length": { "type": ["integer", "null"] },
+        "lm_eval_version": { "type": "string" },
+        "model_revision": { "type": ["string", "null"] }
+      }
+    },
+    "meta": { "type": "object" }
+  }
+}
