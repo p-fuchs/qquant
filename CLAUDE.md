@@ -69,6 +69,9 @@ Keep entries terse and concrete.
 - **`gptqmodel 7.1.0` needs `torchvision`** at model-load time but does NOT declare it (not
   in the lock) — install `torchvision` (cu126 index, matches torch 2.12.1 → 0.27.1+cu126)
   or gptq/awq loads die with `ModuleNotFoundError: No module named 'torchvision'`.
+- **`gptqmodel` JIT-compiles its sm_89 Marlin torch.ops extension at first load and
+  hard-requires `ninja`** ("Ninja is required to load C++ extensions"); install `ninja`
+  (+ a C/C++ toolchain via `build-essential`, + nvcc on PATH) or gptq/awq loads fail.
 - **gsm8k dataset id**: lm-eval's gsm8k task uses the bare `gsm8k` repo id, which was
   renamed to `openai/gsm8k`; `datasets>=4` (and 3.x) reject the bare id with `HfUriError`
   (verified locally — only `openai/gsm8k` resolves). The real GSM8K eval must use

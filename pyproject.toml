@@ -42,6 +42,8 @@ gpu = [
     "torch>=2.8 ; sys_platform == 'linux'",
     # gptqmodel imports torchvision at model-load time but doesn't declare it (Spec 02 spike).
     "torchvision ; sys_platform == 'linux'",
+    # gptqmodel JIT-compiles its sm_89 Marlin extension at first load; that needs ninja.
+    "ninja ; sys_platform == 'linux'",
     "transformers==5.10.1 ; sys_platform == 'linux'",
     "gptqmodel==7.1.0 ; sys_platform == 'linux'",
     "optimum>=2.2.0 ; sys_platform == 'linux'",

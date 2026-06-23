@@ -45,7 +45,9 @@ uv python install 3.11 || exit 2
 #    (sdist-only on PyPI; built with --no-build-isolation against the venv's setuptools).
 # torchvision: gptqmodel 7.1.0 imports it at model-load time (not declared in its deps).
 uv pip install --python "$PY" --index-url "$TORCH_INDEX" "torch==2.12.1" torchvision || exit 3
-uv pip install --python "$PY" numpy "setuptools>=77.0.1,<83" wheel packaging || exit 3
+# ninja: gptqmodel JIT-compiles its sm_89 Marlin torch.ops extension at first load and
+# hard-requires ninja ("Ninja is required to load C++ extensions").
+uv pip install --python "$PY" numpy "setuptools>=77.0.1,<83" wheel packaging ninja || exit 3
 
 # 4. the pinned eval stack (PyPI). NEVER autoawq. gptqmodel needs --no-build-isolation.
 uv pip install --python "$PY" \
