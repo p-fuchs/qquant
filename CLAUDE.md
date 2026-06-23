@@ -53,6 +53,14 @@ Keep entries terse and concrete.
   (`qquant-spike --boot-timeout-s`, default 1800).
 - **vast prints a long MOTD to stderr** on ssh login ("Welcome to vast.ai... Have fun!");
   capture enough of the tail when surfacing remote errors that the real message survives.
+- **`vastai copy` is unreliable for local↔instance**: it returns rc 0 but transfers
+  nothing to a bare-image instance. Use `scp -i <key>` over the `ssh-url` host/port (the
+  same path `ssh` uses) instead — it actually transfers and returns real error codes.
+- **Bootstrap gotchas (stack)**: `gptqmodel 7.1.0` pulls `tokenicer 0.0.13`, whose
+  old-style `project.license` table fails to build under `setuptools>=77` (PEP 639) — pin
+  `setuptools<77` before the `--no-build-isolation` gptqmodel install. Make the bootstrap
+  idempotent across retries/candidates (`uv venv` errors if the venv already exists; guard
+  with `[ -x "$VENV/bin/python" ] || uv venv ...`).
 - **ssh sessions do NOT inherit the image's PATH** — `export PATH=/usr/local/cuda/bin:$PATH`
   for nvcc and gptqmodel's sm_89 JIT build. `--env` vars are also NOT visible in the ssh
   session unless the onstart persists them (`env | grep _ >> /etc/environment`); the onstart
