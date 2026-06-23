@@ -167,8 +167,8 @@ def _remote_command(ref: str) -> str:
         "ls -la /workspace; echo =END-DIAG=; } >&2; "
     )
     return (
-        # venv/bin so the pip-installed `ninja` binary (gptqmodel's JIT needs it on PATH)
-        # is found — running venv/bin/python directly does NOT add venv/bin to PATH.
+        # venv/bin on PATH so gptqmodel's JIT finds the pip `ninja` (torch path-looks-up
+        # ninja, and running venv/bin/python directly does NOT add venv/bin to PATH).
         "export PATH=/workspace/venv/bin:/usr/local/cuda/bin:$PATH; "
         + diag
         # Remove any prior verdict so a stale one can't be misattributed to this ref.
