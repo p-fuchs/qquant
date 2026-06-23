@@ -43,7 +43,8 @@ uv python install 3.11 || exit 2
 #    setuptools>=77: gptqmodel 7.1.0 and its deps (tokenicer, logbar) use the PEP 639
 #    string license (`license = "Apache-2.0"`) and require setuptools>=77.0.1,<83 to build
 #    (sdist-only on PyPI; built with --no-build-isolation against the venv's setuptools).
-uv pip install --python "$PY" --index-url "$TORCH_INDEX" "torch==2.12.1" || exit 3
+# torchvision: gptqmodel 7.1.0 imports it at model-load time (not declared in its deps).
+uv pip install --python "$PY" --index-url "$TORCH_INDEX" "torch==2.12.1" torchvision || exit 3
 uv pip install --python "$PY" numpy "setuptools>=77.0.1,<83" wheel packaging || exit 3
 
 # 4. the pinned eval stack (PyPI). NEVER autoawq. gptqmodel needs --no-build-isolation.

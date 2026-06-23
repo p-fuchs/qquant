@@ -1494,6 +1494,7 @@ gpu = [
     { name = "lm-eval", extra = ["hf", "ifeval", "math"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "optimum", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torchvision", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "transformers", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 
@@ -1522,6 +1523,7 @@ gpu = [
     { name = "lm-eval", extras = ["hf", "ifeval", "math"], marker = "sys_platform == 'linux'", specifier = "==0.4.12" },
     { name = "optimum", marker = "sys_platform == 'linux'", specifier = ">=2.2.0" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.8", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "torchvision", marker = "sys_platform == 'linux'", index = "https://download.pytorch.org/whl/cu126" },
     { name = "transformers", marker = "sys_platform == 'linux'", specifier = "==5.10.1" },
 ]
 
@@ -1823,6 +1825,19 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/fe/a4036a8e80fa800c92dbcbf75f541cd4c106248b6b579db6dab1800f616a/torchao-0.17.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:87a418ce0ec064a821ceab83c921b501acef0ce9a6ccd1be358fcd16c3ae8c58", size = 3206172, upload-time = "2026-03-30T22:25:52.974Z" },
     { url = "https://files.pythonhosted.org/packages/c9/37/ef37ca885265e5f79a168616767dd416a3cea1cc3b28bb6b503ce4a5b652/torchao-0.17.0-py3-none-any.whl", hash = "sha256:02eba449036715b9ae784fbaa1a6f97994bb7b0421ce92d1d5d1c08e5bd6d349", size = 1200680, upload-time = "2026-03-30T22:25:54.457Z" },
+]
+
+[[package]]
+name = "torchvision"
+version = "0.27.1+cu126"
+source = { registry = "https://download.pytorch.org/whl/cu126" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pillow", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.27.1%2Bcu126-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:4ae2eea4ff7a9ffb06f9c3f6301d7126f8ce94a46959aeb78136def4bc046f96", upload-time = "2026-06-17T15:44:39Z" },
 ]
 
 [[package]]

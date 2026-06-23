@@ -214,9 +214,31 @@ def check_mmlu_subtask(args) -> bool:
     return acc is not None and math.isfinite(float(acc))
 
 
+def _patch_gsm8k_dataset_id() -> None:
+    """lm-eval's gsm8k task uses the bare ``gsm8k`` id, renamed to ``openai/gsm8k``.
+
+    datasets>=4 rejects the bare id, so rewrite it (and drop the stale revision, which
+    belongs to the old repo) at the datasets layer. The real eval (Spec 05/06) must
+    apply the same fix to the gsm8k task config.
+    """
+    import datasets
+
+    for name in ("load_dataset", "load_dataset_builder"):
+        orig = getattr(datasets, name)
+
+        def patched(path, *a, _orig=orig, **k):
+            if path == "gsm8k":
+                path = "openai/gsm8k"
+                k.pop("revision", None)
+            return _orig(path, *a, **k)
+
+        setattr(datasets, name, patched)
+
+
 def check_generate_until(args) -> bool:
     from lm_eval import simple_evaluate
 
+    _patch_gsm8k_dataset_id()
     res = simple_evaluate(
         model="hf",
         model_args=f"pretrained={args.model},revision={args.revision},dtype=bfloat16",

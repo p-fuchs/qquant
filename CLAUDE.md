@@ -66,6 +66,13 @@ Keep entries terse and concrete.
   `[ -x "$VENV/bin/python" ] || uv venv ...`). Verified the boundary locally for $0 by
   test-building the pure-python sdists across setuptools versions (use `--no-cache` — uv
   caches built wheels by name+version, not by setuptools version).
+- **`gptqmodel 7.1.0` needs `torchvision`** at model-load time but does NOT declare it (not
+  in the lock) — install `torchvision` (cu126 index, matches torch 2.12.1 → 0.27.1+cu126)
+  or gptq/awq loads die with `ModuleNotFoundError: No module named 'torchvision'`.
+- **gsm8k dataset id**: lm-eval's gsm8k task uses the bare `gsm8k` repo id, which was
+  renamed to `openai/gsm8k`; `datasets>=4` (and 3.x) reject the bare id with `HfUriError`
+  (verified locally — only `openai/gsm8k` resolves). The real GSM8K eval must use
+  `openai/gsm8k` (patch the task yaml / rewrite at the datasets layer).
 - **ssh sessions do NOT inherit the image's PATH** — `export PATH=/usr/local/cuda/bin:$PATH`
   for nvcc and gptqmodel's sm_89 JIT build. `--env` vars are also NOT visible in the ssh
   session unless the onstart persists them (`env | grep _ >> /etc/environment`); the onstart

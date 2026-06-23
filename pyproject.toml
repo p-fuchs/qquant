@@ -40,6 +40,8 @@ analysis = ["pandas>=2.0", "numpy>=1.26", "matplotlib>=3.8"]
 # Pins per docs/specs/decision-log.md. NEVER add autoawq (archived; downgrades transformers).
 gpu = [
     "torch>=2.8 ; sys_platform == 'linux'",
+    # gptqmodel imports torchvision at model-load time but doesn't declare it (Spec 02 spike).
+    "torchvision ; sys_platform == 'linux'",
     "transformers==5.10.1 ; sys_platform == 'linux'",
     "gptqmodel==7.1.0 ; sys_platform == 'linux'",
     "optimum>=2.2.0 ; sys_platform == 'linux'",
@@ -63,6 +65,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 
 [tool.ruff]
 line-length = 88
