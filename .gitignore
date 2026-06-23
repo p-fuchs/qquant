@@ -22,3 +22,8 @@ hf_cache/
 
 # OS
 .DS_Store
+
+# Editor / tooling
+.idea/
+.vscode/
+.serena/

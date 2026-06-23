@@ -9,16 +9,21 @@ authors = [
     { name = "Przemysław Fuchs" },
 ]
 # Torch-free core dependencies only. The GPU stack lives in the `gpu` group below.
+# `vastai` is the cross-platform CLI the torch-free orchestrator shells out to (Spec 02);
+# unit tests use a fake runner, but the real spike/run needs the `vastai` binary present.
 dependencies = [
     "pyyaml>=6.0",
     "jsonschema>=4.18",
+    "vastai>=1.1.1",
 ]
 
 [project.scripts]
-# Spec 01 owns [project.scripts]. The torch-free umbrella CLI is registered now;
-# GPU-touching CLIs (qquant-eval, qquant-profile, qquant-orchestrate, qquant-aggregate)
-# are added by their own specs so the umbrella never imports torch.
+# Spec 01 owns the umbrella line; each later spec adds its own GPU-touching entry point
+# (separate binaries so the torch-free umbrella `qquant` never imports torch).
+# GPU-touching CLIs still reserved: qquant-eval, qquant-profile, qquant-orchestrate,
+# qquant-aggregate, qquant-report (added by their own specs).
 qquant = "qquant.cli:main"
+qquant-spike = "qquant.orchestrate.spike:main"  # Spec 02
 
 [build-system]
 requires = ["hatchling"]

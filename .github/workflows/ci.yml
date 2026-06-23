@@ -32,4 +32,4 @@ jobs:
         run: uv run pytest
 
       - name: torch-free import guard
-        run: uv run python -c "import qquant, sys; assert 'torch' not in sys.modules, sorted(m for m in sys.modules if m.startswith('torch'))"
+        run: uv run python -c "import qquant, qquant.orchestrate.vastai, qquant.orchestrate.spike, sys; assert 'torch' not in sys.modules, sorted(m for m in sys.modules if m.startswith('torch'))"
