@@ -213,6 +213,29 @@ class VastClient:
     def ssh_url(self, instance_id: int) -> str:
         return self._run("ssh-url", str(instance_id)).stdout.strip()
 
+    def _ssh_opts(self) -> list[str]:
+        """Shared ssh/scp options. Uses the explicit identity when one is configured."""
+        opts: list[str] = []
+        if self.ssh_identity:
+            opts += ["-i", self.ssh_identity, "-o", "IdentitiesOnly=yes"]
+        opts += [
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        ]
+        return opts
+
+    def _run_argv(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        """Run a raw (non-vastai) argv, e.g. scp; raise ``VastError`` on nonzero rc."""
+        proc = self.runner(argv)
+        if proc.returncode != 0:
+            raise VastError(
+                f"`{' '.join(argv)}` failed (rc={proc.returncode}): "
+                f"{(proc.stderr or proc.stdout or '').strip()}"
+            )
+        return proc
+
     def ssh_exec(
         self,
         instance_id: int,
@@ -221,16 +244,10 @@ class VastClient:
         timeout_s: float | None = None,
         connect_timeout_s: int = 30,
     ) -> subprocess.CompletedProcess[str]:
-        url = self.ssh_url(instance_id)  # ssh://root@host:port
-        host, port = _parse_ssh_url(url)
-        ssh_argv = ["ssh"]
-        if self.ssh_identity:
-            ssh_argv += ["-i", self.ssh_identity, "-o", "IdentitiesOnly=yes"]
-        ssh_argv += [
-            "-o",
-            "StrictHostKeyChecking=accept-new",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
+        host, port = _parse_ssh_url(self.ssh_url(instance_id))
+        ssh_argv = [
+            "ssh",
+            *self._ssh_opts(),
             "-o",
             f"ConnectTimeout={connect_timeout_s}",
             "-o",
@@ -250,17 +267,32 @@ class VastClient:
             ssh_argv.append(command)
         return self.runner(ssh_argv)
 
-    def _copy_identity(self) -> list[str]:
-        return ["-i", self.ssh_identity] if self.ssh_identity else []
-
+    # `vastai copy` is unreliable for local<->instance (returns rc 0 but transfers
+    # nothing on a bare image), so copy over the same proven ssh path with scp.
     def copy_to(self, instance_id: int, local_path: str, remote_path: str) -> None:
-        self._run(
-            "copy", *self._copy_identity(), local_path, f"{instance_id}:{remote_path}"
+        host, port = _parse_ssh_url(self.ssh_url(instance_id))
+        self._run_argv(
+            [
+                "scp",
+                *self._ssh_opts(),
+                "-P",
+                str(port),
+                local_path,
+                f"root@{host}:{remote_path}",
+            ]
         )
 
     def copy_from(self, instance_id: int, remote_path: str, local_path: str) -> None:
-        self._run(
-            "copy", *self._copy_identity(), f"{instance_id}:{remote_path}", local_path
+        host, port = _parse_ssh_url(self.ssh_url(instance_id))
+        self._run_argv(
+            [
+                "scp",
+                *self._ssh_opts(),
+                "-P",
+                str(port),
+                f"root@{host}:{remote_path}",
+                local_path,
+            ]
         )
 
     def destroy(self, instance_id: int) -> None:

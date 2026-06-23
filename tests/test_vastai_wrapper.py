@@ -388,57 +388,52 @@ def test_ssh_url_argv_and_value():
     assert url == "ssh://root@1.2.3.4:12345"
 
 
-def test_copy_to_argv():
-    runner = FakeRunner([(0, "", "")])
+def test_copy_to_uses_scp():
+    # copy_to resolves ssh-url (call 0) then scp's the file up (call 1).
+    runner = FakeRunner([(0, "ssh://root@h:2222\n", ""), (0, "", "")])
     client = VastClient(runner=runner)
 
     client.copy_to(98765, "local/spike_remote.py", "/workspace/spike_remote.py")
 
-    assert runner.calls[0] == [
-        "vastai",
-        "copy",
-        "local/spike_remote.py",
-        "98765:/workspace/spike_remote.py",
-    ]
+    scp = runner.calls[1]
+    assert scp[0] == "scp"
+    assert scp[scp.index("-P") + 1] == "2222"
+    assert scp[-2] == "local/spike_remote.py"
+    assert scp[-1] == "root@h:/workspace/spike_remote.py"
 
 
-def test_copy_from_argv():
-    runner = FakeRunner([(0, "", "")])
+def test_copy_from_uses_scp():
+    runner = FakeRunner([(0, "ssh://root@h:2222\n", ""), (0, "", "")])
     client = VastClient(runner=runner)
 
     client.copy_from(98765, "/workspace/spike_verdict.json", "out/spike.json")
 
-    assert runner.calls[0] == [
-        "vastai",
-        "copy",
-        "98765:/workspace/spike_verdict.json",
-        "out/spike.json",
-    ]
+    scp = runner.calls[1]
+    assert scp[0] == "scp"
+    assert scp[-2] == "root@h:/workspace/spike_verdict.json"
+    assert scp[-1] == "out/spike.json"
 
 
 def test_copy_uses_identity_when_set():
-    runner = FakeRunner([(0, "", ""), (0, "", "")])
+    runner = FakeRunner([(0, "ssh://root@h:2222\n", ""), (0, "", "")])
     client = VastClient(runner=runner, ssh_identity="ssh_keys/vastai")
 
     client.copy_to(98765, "a.py", "/workspace/a.py")
-    client.copy_from(98765, "/workspace/v.json", "out.json")
 
-    assert runner.calls[0] == [
-        "vastai",
-        "copy",
-        "-i",
-        "ssh_keys/vastai",
-        "a.py",
-        "98765:/workspace/a.py",
-    ]
-    assert runner.calls[1] == [
-        "vastai",
-        "copy",
-        "-i",
-        "ssh_keys/vastai",
-        "98765:/workspace/v.json",
-        "out.json",
-    ]
+    scp = runner.calls[1]
+    assert scp[0] == "scp"
+    assert scp[scp.index("-i") + 1] == "ssh_keys/vastai"
+    assert "IdentitiesOnly=yes" in scp
+
+
+def test_copy_raises_on_scp_failure():
+    runner = FakeRunner(
+        [(0, "ssh://root@h:2222\n", ""), (1, "", "scp: permission denied")]
+    )
+    client = VastClient(runner=runner)
+
+    with pytest.raises(VastError):
+        client.copy_to(98765, "a.py", "/workspace/a.py")
 
 
 def test_ssh_exec_uses_identity_when_set():

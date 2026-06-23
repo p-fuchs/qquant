@@ -162,9 +162,9 @@ def _remote_command(ref: str) -> str:
     # The diagnostic preamble (-> stderr, captured into notes on failure) makes a remote
     # failure self-explaining (PATH, tool presence, what landed in /workspace).
     diag = (
-        "echo =DIAG=; uname -sm; echo PATH=$PATH; "
+        "{ echo =DIAG=; uname -sm; echo PATH=$PATH; "
         "command -v timeout bash uv curl git nvcc; "
-        "ls -la /workspace; echo =END-DIAG=; "
+        "ls -la /workspace; echo =END-DIAG=; } >&2; "
     )
     return (
         "export PATH=/usr/local/cuda/bin:$PATH; "
