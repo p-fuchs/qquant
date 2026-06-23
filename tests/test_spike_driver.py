@@ -127,6 +127,8 @@ class FakeVastClient:
 
     def copy_from(self, instance_id, remote, local):
         self.copy_from_calls.append((remote, local))
+        if not self._payloads:
+            raise FileNotFoundError("no remote verdict")  # bootstrap never wrote one
         payload = self._payloads.pop(0)
         Path(local).write_text(json.dumps(payload))
 
@@ -189,9 +191,24 @@ def test_all_candidates_fail_bootstrap_is_nogo(tmp_path):
         candidates=("main", "0.4.12"),
     )
     assert verdict.verdict == "NO-GO"
-    assert client.copy_from_calls == []
+    # copy_from is attempted per candidate (verdict file is the source of truth) but the
+    # remote never wrote one, so it's recorded as a bootstrap failure.
+    assert len(client.copy_from_calls) == 2
     assert verdict.notes  # explains why
     assert client.destroy_calls == [4242]
+
+
+def test_nonzero_remote_with_verdict_is_used_not_discarded(tmp_path):
+    # spike_remote exits 1 on NO-GO but still writes a full verdict; run_spike must READ
+    # the verdict file (source of truth) rather than treat rc!=0 as a bootstrap failure.
+    client = FakeVastClient(ssh_exec_rc=1, payloads=[_payload(fail="bnb_loads")])
+    verdict = run_spike(
+        client, image="img", out_path=str(tmp_path / "s.json"), candidates=("main",)
+    )
+    assert verdict.verdict == "NO-GO"
+    assert verdict.checks["bnb_loads"] is False
+    assert verdict.checks["nvcc_matches_torch"] is True  # real per-check data preserved
+    assert client.copy_from_calls  # verdict was copied back despite rc != 0
 
 
 # --------------------------------------------------------------------------------------

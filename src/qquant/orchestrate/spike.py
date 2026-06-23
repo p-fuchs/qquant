@@ -19,7 +19,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from qquant.orchestrate.vastai import (
@@ -169,6 +169,8 @@ def _remote_command(ref: str) -> str:
     return (
         "export PATH=/usr/local/cuda/bin:$PATH; "
         + diag
+        # Remove any prior verdict so a stale one can't be misattributed to this ref.
+        + f"rm -f {REMOTE_VERDICT}; "
         + f"bash {REMOTE_BOOTSTRAP} {ref} && "
         + f"{REMOTE_PYTHON} {REMOTE_SCRIPT} --lm-eval-ref {ref} "
         + f"--model {MODEL} --revision {MODEL_REV} "
@@ -344,22 +346,31 @@ def run_spike(
             result = client.ssh_exec(
                 instance_id, _remote_command(ref), timeout_s=max_runtime_s
             )
-            if result.returncode != 0:
+            # The verdict FILE is the source of truth, not the exit code: spike_remote
+            # exits 1 on NO-GO yet still writes a full verdict. Always try to copy it
+            # back; a missing/unparseable file means bootstrap failed before it ran.
+            raw: dict | None = None
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    local = os.path.join(tmp, "verdict.json")
+                    client.copy_from(instance_id, REMOTE_VERDICT, local)
+                    raw = json.loads(Path(local).read_text())
+            except Exception as exc:  # noqa: BLE001
                 tail = (result.stderr or result.stdout or "").strip()[-1500:]
                 notes.append(
-                    f"candidate {ref!r}: remote exited {result.returncode}: {tail}"
+                    f"candidate {ref!r}: no verdict (remote rc={result.returncode}, "
+                    f"copy failed: {exc}): {tail}"
                 )
                 continue
-            with tempfile.TemporaryDirectory() as tmp:
-                local = os.path.join(tmp, "verdict.json")
-                client.copy_from(instance_id, REMOTE_VERDICT, local)
-                raw = json.loads(Path(local).read_text())
             verdict = verdict_from_payload(raw)
             if verdict.verdict == "GO":
                 break
 
         if verdict is None:
             verdict = _nogo(notes or ["no candidate produced a verdict"])
+        elif notes:
+            # surface earlier-candidate bootstrap failures alongside the chosen verdict
+            verdict = replace(verdict, notes=[*verdict.notes, *notes])
         _write_verdict(out_path, verdict)
         return verdict
 
