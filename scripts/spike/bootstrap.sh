@@ -40,10 +40,11 @@ uv python install 3.11 || exit 2
 
 # 3. torch from the cu126 index FIRST (gptqmodel builds against the installed torch).
 #    Pinned to the decision-log version so the spike validates the EXACT money-matrix stack.
-#    setuptools<77: gptqmodel 7.1.0's dep `tokenicer` 0.0.13 has an old-style license table
-#    that PEP-639 enforcement in setuptools>=77 rejects during its --no-build-isolation build.
+#    setuptools>=77: gptqmodel 7.1.0 and its deps (tokenicer, logbar) use the PEP 639
+#    string license (`license = "Apache-2.0"`) and require setuptools>=77.0.1,<83 to build
+#    (sdist-only on PyPI; built with --no-build-isolation against the venv's setuptools).
 uv pip install --python "$PY" --index-url "$TORCH_INDEX" "torch==2.12.1" || exit 3
-uv pip install --python "$PY" numpy "setuptools<77" wheel packaging || exit 3
+uv pip install --python "$PY" numpy "setuptools>=77.0.1,<83" wheel packaging || exit 3
 
 # 4. the pinned eval stack (PyPI). NEVER autoawq. gptqmodel needs --no-build-isolation.
 uv pip install --python "$PY" \

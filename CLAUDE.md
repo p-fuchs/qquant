@@ -56,11 +56,16 @@ Keep entries terse and concrete.
 - **`vastai copy` is unreliable for local↔instance**: it returns rc 0 but transfers
   nothing to a bare-image instance. Use `scp -i <key>` over the `ssh-url` host/port (the
   same path `ssh` uses) instead — it actually transfers and returns real error codes.
-- **Bootstrap gotchas (stack)**: `gptqmodel 7.1.0` pulls `tokenicer 0.0.13`, whose
-  old-style `project.license` table fails to build under `setuptools>=77` (PEP 639) — pin
-  `setuptools<77` before the `--no-build-isolation` gptqmodel install. Make the bootstrap
-  idempotent across retries/candidates (`uv venv` errors if the venv already exists; guard
-  with `[ -x "$VENV/bin/python" ] || uv venv ...`).
+- **Bootstrap gotchas (stack)**: `gptqmodel 7.1.0` + its deps `tokenicer 0.0.13` /
+  `logbar 0.4.3` are **sdist-only** on PyPI and use the PEP 639 string license
+  (`license = "Apache-2.0"`), so they **require `setuptools>=77.0.1,<83`** to build
+  (setuptools<77 rejects the string license with "project.license must be valid exactly by
+  one definition"). Since the install is `--no-build-isolation`, pin the venv's setuptools
+  into that range BEFORE installing. Make the bootstrap idempotent across retries/candidate
+  refs (`uv venv` errors if the venv already exists; guard with
+  `[ -x "$VENV/bin/python" ] || uv venv ...`). Verified the boundary locally for $0 by
+  test-building the pure-python sdists across setuptools versions (use `--no-cache` — uv
+  caches built wheels by name+version, not by setuptools version).
 - **ssh sessions do NOT inherit the image's PATH** — `export PATH=/usr/local/cuda/bin:$PATH`
   for nvcc and gptqmodel's sm_89 JIT build. `--env` vars are also NOT visible in the ssh
   session unless the onstart persists them (`env | grep _ >> /etc/environment`); the onstart
