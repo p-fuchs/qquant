@@ -147,7 +147,9 @@ def test_run_spike_happy_go(tmp_path):
 
     assert verdict.verdict == "GO"
     assert verdict.lm_eval_ref == "abc123sha"
-    assert len(client.ssh_exec_calls) == 1  # first candidate already GO
+    assert client.ssh_exec_calls[0] == "mkdir -p /workspace"  # /workspace created first
+    candidate_runs = [c for c in client.ssh_exec_calls if "spike_remote.py" in c]
+    assert len(candidate_runs) == 1  # first candidate already GO
     assert client.destroy_calls == [4242]
     assert client.create_ask_id == 222
     assert client.create_kwargs["disk_gb"] == 120
@@ -173,7 +175,8 @@ def test_run_spike_tries_candidates_until_go(tmp_path):
     )
     assert verdict.verdict == "GO"
     assert verdict.lm_eval_ref == "0.4.12"
-    assert len(client.ssh_exec_calls) == 2
+    candidate_runs = [c for c in client.ssh_exec_calls if "spike_remote.py" in c]
+    assert len(candidate_runs) == 2
 
 
 def test_all_candidates_fail_bootstrap_is_nogo(tmp_path):
@@ -201,7 +204,7 @@ def test_destroys_when_ssh_exec_raises(tmp_path):
     with pytest.raises(RuntimeError):
         run_spike(client, image="img", out_path=str(tmp_path / "s.json"))
     assert client.destroy_calls == [4242]
-    assert client.copy_to_calls  # got far enough to upload the script
+    assert client.ssh_exec_calls  # reached the remote step (mkdir) before raising
 
 
 def test_destroys_when_wait_raises(tmp_path):

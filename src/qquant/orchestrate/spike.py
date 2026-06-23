@@ -143,6 +143,9 @@ def _deadman_onstart(max_runtime_s: int) -> str:
     """
     api = "https://console.vast.ai/api/v0/instances"
     return (
+        # Bare CUDA images have no /workspace (a vast pytorch-template convention); make
+        # it so the deadman log + the copied scripts have a home.
+        "mkdir -p /workspace; "
         "command -v curl >/dev/null 2>&1 || "
         "(apt-get update -qq && apt-get install -y -qq curl ca-certificates) "
         ">/dev/null 2>&1; "
@@ -156,14 +159,22 @@ def _deadman_onstart(max_runtime_s: int) -> str:
 def _remote_command(ref: str) -> str:
     # vast.ai ssh sessions don't inherit the image's PATH, so make nvcc (CUDA toolchain)
     # resolvable for both spike_remote's nvcc check and gptqmodel's sm_89 JIT build.
+    # The diagnostic preamble (-> stderr, captured into notes on failure) makes a remote
+    # failure self-explaining (PATH, tool presence, what landed in /workspace).
+    diag = (
+        "echo =DIAG=; uname -sm; echo PATH=$PATH; "
+        "command -v timeout bash uv curl git nvcc; "
+        "ls -la /workspace; echo =END-DIAG=; "
+    )
     return (
         "export PATH=/usr/local/cuda/bin:$PATH; "
-        f"bash {REMOTE_BOOTSTRAP} {ref} && "
-        f"{REMOTE_PYTHON} {REMOTE_SCRIPT} --lm-eval-ref {ref} "
-        f"--model {MODEL} --revision {MODEL_REV} "
-        f"--gptq-model {GPTQ_MODEL} --gptq-revision {GPTQ_REV} "
-        f"--awq-model {AWQ_MODEL} --awq-revision {AWQ_REV} "
-        f"--out {REMOTE_VERDICT}"
+        + diag
+        + f"bash {REMOTE_BOOTSTRAP} {ref} && "
+        + f"{REMOTE_PYTHON} {REMOTE_SCRIPT} --lm-eval-ref {ref} "
+        + f"--model {MODEL} --revision {MODEL_REV} "
+        + f"--gptq-model {GPTQ_MODEL} --gptq-revision {GPTQ_REV} "
+        + f"--awq-model {AWQ_MODEL} --awq-revision {AWQ_REV} "
+        + f"--out {REMOTE_VERDICT}"
     )
 
 
@@ -287,6 +298,7 @@ def run_spike(
     keep_alive: bool = False,
     offer_query: str = DEFAULT_OFFER_QUERY,
     max_dph: float = DEFAULT_MAX_DPH,
+    boot_timeout_s: float = 1800.0,
     remote_script: str | None = None,
     bootstrap_script: str | None = None,
 ) -> SpikeVerdict:
@@ -317,7 +329,12 @@ def run_spike(
             label="qquant-spike",
         )
         teardown.instance_id = instance_id
-        wait_until_running(client, instance_id)
+        # The bare CUDA-devel image is large; a slow host can take many minutes to pull
+        # it before actual_status reaches "running", so the boot wait is generous.
+        wait_until_running(client, instance_id, timeout_s=boot_timeout_s)
+        # Bare CUDA images have no /workspace (a vast pytorch-template convention) —
+        # create it before copying, else `vastai copy` silently lands nothing there.
+        client.ssh_exec(instance_id, "mkdir -p /workspace", timeout_s=120)
         client.copy_to(instance_id, remote_script, REMOTE_SCRIPT)
         client.copy_to(instance_id, bootstrap_script, REMOTE_BOOTSTRAP)
 
@@ -328,7 +345,10 @@ def run_spike(
                 instance_id, _remote_command(ref), timeout_s=max_runtime_s
             )
             if result.returncode != 0:
-                notes.append(f"candidate {ref!r}: remote exited {result.returncode}")
+                tail = (result.stderr or result.stdout or "").strip()[-1500:]
+                notes.append(
+                    f"candidate {ref!r}: remote exited {result.returncode}: {tail}"
+                )
                 continue
             with tempfile.TemporaryDirectory() as tmp:
                 local = os.path.join(tmp, "verdict.json")
@@ -374,6 +394,12 @@ def main(argv: list[str] | None = None) -> int:
         "--max-dph", type=float, default=DEFAULT_MAX_DPH, help="max $/hr offer"
     )
     parser.add_argument(
+        "--boot-timeout-s",
+        type=float,
+        default=1800.0,
+        help="seconds to wait for the instance to reach 'running' (slow image pulls)",
+    )
+    parser.add_argument(
         "--ssh-key",
         default=None,
         help="ssh private key path registered with vast.ai (for copy + ssh-exec)",
@@ -392,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         keep_alive=args.keep_alive,
         offer_query=args.offer_query,
         max_dph=args.max_dph,
+        boot_timeout_s=args.boot_timeout_s,
     )
     print(
         f"verdict={verdict.verdict} lm_eval_ref={verdict.lm_eval_ref!r} -> {args.out}"

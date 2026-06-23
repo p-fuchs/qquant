@@ -44,6 +44,15 @@ Keep entries terse and concrete.
   `uv` at bootstrap (torch from the cu126 index, pinned to the decision-log version). The
   dead-man's switch therefore cannot use pip; it self-destroys via the REST API with
   `curl -X DELETE /api/v0/instances/$CONTAINER_ID/ -H "Authorization: Bearer $VAST_API_KEY"`.
+- **The bare image has no `/workspace`** — that directory is a vast *pytorch-template*
+  convention. `mkdir -p /workspace` before using it (in the onstart and before `vastai
+  copy`); copying to a non-existent remote dir silently lands NOTHING yet returns rc 0
+  (the failure surfaces later as `bash: /workspace/...: No such file` → exit 127).
+- **Boot is slow**: pulling the large CUDA-devel image can take >15 min on some hosts;
+  `actual_status` stays `None`/pre-running meanwhile. Use a generous boot timeout
+  (`qquant-spike --boot-timeout-s`, default 1800).
+- **vast prints a long MOTD to stderr** on ssh login ("Welcome to vast.ai... Have fun!");
+  capture enough of the tail when surfacing remote errors that the real message survives.
 - **ssh sessions do NOT inherit the image's PATH** — `export PATH=/usr/local/cuda/bin:$PATH`
   for nvcc and gptqmodel's sm_89 JIT build. `--env` vars are also NOT visible in the ssh
   session unless the onstart persists them (`env | grep _ >> /etc/environment`); the onstart
