@@ -13,6 +13,12 @@ build/
 .env
 *.local
 
+# SSH keys for vast.ai (NEVER commit private keys)
+ssh_keys/
+*.pem
+id_rsa
+id_ed25519
+
 # Experiment outputs (large; regenerated)
 results/
 !tests/**/results/

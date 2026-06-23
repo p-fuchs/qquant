@@ -416,6 +416,43 @@ def test_copy_from_argv():
     ]
 
 
+def test_copy_uses_identity_when_set():
+    runner = FakeRunner([(0, "", ""), (0, "", "")])
+    client = VastClient(runner=runner, ssh_identity="ssh_keys/vastai")
+
+    client.copy_to(98765, "a.py", "/workspace/a.py")
+    client.copy_from(98765, "/workspace/v.json", "out.json")
+
+    assert runner.calls[0] == [
+        "vastai",
+        "copy",
+        "-i",
+        "ssh_keys/vastai",
+        "a.py",
+        "98765:/workspace/a.py",
+    ]
+    assert runner.calls[1] == [
+        "vastai",
+        "copy",
+        "-i",
+        "ssh_keys/vastai",
+        "98765:/workspace/v.json",
+        "out.json",
+    ]
+
+
+def test_ssh_exec_uses_identity_when_set():
+    runner = FakeRunner([(0, "ssh://root@h:22\n", ""), (0, "ok", "")])
+    client = VastClient(runner=runner, ssh_identity="ssh_keys/vastai")
+
+    client.ssh_exec(98765, "echo hi", timeout_s=10)
+
+    ssh_argv = runner.calls[1]
+    assert "-i" in ssh_argv
+    assert ssh_argv[ssh_argv.index("-i") + 1] == "ssh_keys/vastai"
+    assert "IdentitiesOnly=yes" in ssh_argv
+
+
 def test_destroy_argv():
     runner = FakeRunner([(0, "destroyed", "")])
     client = VastClient(runner=runner)

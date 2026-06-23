@@ -107,10 +107,17 @@ class VastClient:
     """All methods build ``[binary, *args]`` and run via the injected ``runner``."""
 
     def __init__(
-        self, runner: Runner = default_runner, *, binary: str = "vastai"
+        self,
+        runner: Runner = default_runner,
+        *,
+        binary: str = "vastai",
+        ssh_identity: str | None = None,
     ) -> None:
         self.runner = runner
         self.binary = binary
+        # Private-key path used by `vastai copy -i` and `ssh -i` when the key is not in
+        # the default ~/.ssh location (vast.ai keys are registered account-side).
+        self.ssh_identity = ssh_identity
 
     # -- internal seam --
 
@@ -216,8 +223,10 @@ class VastClient:
     ) -> subprocess.CompletedProcess[str]:
         url = self.ssh_url(instance_id)  # ssh://root@host:port
         host, port = _parse_ssh_url(url)
-        ssh_argv = [
-            "ssh",
+        ssh_argv = ["ssh"]
+        if self.ssh_identity:
+            ssh_argv += ["-i", self.ssh_identity, "-o", "IdentitiesOnly=yes"]
+        ssh_argv += [
             "-o",
             "StrictHostKeyChecking=accept-new",
             "-o",
@@ -241,11 +250,18 @@ class VastClient:
             ssh_argv.append(command)
         return self.runner(ssh_argv)
 
+    def _copy_identity(self) -> list[str]:
+        return ["-i", self.ssh_identity] if self.ssh_identity else []
+
     def copy_to(self, instance_id: int, local_path: str, remote_path: str) -> None:
-        self._run("copy", local_path, f"{instance_id}:{remote_path}")
+        self._run(
+            "copy", *self._copy_identity(), local_path, f"{instance_id}:{remote_path}"
+        )
 
     def copy_from(self, instance_id: int, remote_path: str, local_path: str) -> None:
-        self._run("copy", f"{instance_id}:{remote_path}", local_path)
+        self._run(
+            "copy", *self._copy_identity(), f"{instance_id}:{remote_path}", local_path
+        )
 
     def destroy(self, instance_id: int) -> None:
         """Idempotent: swallow a nonzero rc that means the instance is already gone.

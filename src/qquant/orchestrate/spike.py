@@ -373,10 +373,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-dph", type=float, default=DEFAULT_MAX_DPH, help="max $/hr offer"
     )
+    parser.add_argument(
+        "--ssh-key",
+        default=None,
+        help="ssh private key path registered with vast.ai (for copy + ssh-exec)",
+    )
     args = parser.parse_args(argv)
 
     candidates = tuple(c.strip() for c in args.candidates.split(",") if c.strip())
-    client = VastClient()
+    client = VastClient(ssh_identity=args.ssh_key)
     verdict = run_spike(
         client,
         image=args.image,
