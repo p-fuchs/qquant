@@ -71,7 +71,10 @@ Keep entries terse and concrete.
   or gptq/awq loads die with `ModuleNotFoundError: No module named 'torchvision'`.
 - **`gptqmodel` JIT-compiles its sm_89 Marlin torch.ops extension at first load and
   hard-requires `ninja`** ("Ninja is required to load C++ extensions"); install `ninja`
-  (+ a C/C++ toolchain via `build-essential`, + nvcc on PATH) or gptq/awq loads fail.
+  (+ a C/C++ toolchain via `build-essential`, + nvcc on PATH). GOTCHA: torch finds ninja by
+  a **PATH lookup**, and running `venv/bin/python` directly does NOT put `venv/bin` on PATH,
+  so the pip-installed `ninja` is invisible — export `venv/bin` on PATH (or apt
+  `ninja-build` for a system-wide binary).
 - **gsm8k dataset id**: lm-eval's gsm8k task uses the bare `gsm8k` repo id, which was
   renamed to `openai/gsm8k`; `datasets>=4` (and 3.x) reject the bare id with `HfUriError`
   (verified locally — only `openai/gsm8k` resolves). The real GSM8K eval must use

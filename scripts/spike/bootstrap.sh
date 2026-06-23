@@ -26,7 +26,7 @@ mkdir -p /workspace "$HF_HOME"
 #    (gptqmodel JIT-compiles sm_89 kernels; nvcc is already in the devel image).
 if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    git curl ca-certificates build-essential || exit 2
+    git curl ca-certificates build-essential ninja-build || exit 2
 fi
 
 # 2. uv + a pinned Python 3.11 venv.
