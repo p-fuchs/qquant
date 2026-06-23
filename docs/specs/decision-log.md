@@ -32,11 +32,38 @@ projects:
 | bitsandbytes | **0.49.2** | LLM.int8() + NF4; ships prebuilt sm_89 cubins (no nvcc needed). Linux-only. |
 | accelerate | **1.13.0** | device_map loading. |
 | compressed-tensors | **0.17.1** | to **load** self-quant checkpoints natively in transformers v5. |
-| lm-eval | **0.4.12** `[hf,ifeval,math]` | ⚠ v5 support is OPEN (issue #3537, `apply_chat_template`). Pin a v5-working commit if the Spec-02 spike fails (0.4.12 is the fallback pin). |
+| lm-eval | **`c6491878…`** (main) `[hf,ifeval,math]` | ✅ Spec-02 spike (2026-06-23) confirmed lm-eval `main` @ `c6491878fb0a9d627dff50336c98bbf39e3b56e4` works with transformers 5.10.1 (scores MMLU + runs `generate_until`). `0.4.12` remains the fallback pin. |
+| torchvision | **0.27.1+cu126** | gptqmodel imports it at model-load time but doesn't declare it (Spec-02 spike). |
+| ninja | **1.13.0** | gptqmodel JIT-compiles its sm_89 Marlin extension at first load and hard-requires ninja **on PATH**. |
 | numpy | **2.2.6** | pinned by gptqmodel. |
 
 Universal lock covers `macos-arm64` (core+dev only; torch-free) and `linux-x86_64` (full
 `gpu` group). `bitsandbytes`/`gptqmodel`/`optimum`/`torch(cu126)` are `sys_platform=='linux'`.
+
+### Spec-02 go/no-go spike outcome — **GO** (2026-06-23, real RTX 4090)
+
+All 8 on-box checks passed (`results/_meta/spike.json`, archived at
+`docs/specs/artifacts/spike-verdict.json`): `nvcc_matches_torch` (12.6==12.6),
+`mmlu_subjects_match` (57), `chat_template_renders`, `mmlu_subtask_scored`,
+`generate_until_ok`, `bnb_loads` (int8+NF4), `gptq_loads` (Marlin sm_89 JIT), and
+`awq_official_loads` (**so `awq-official` stays enabled** — the contingency did not fire).
+Resolved working **lm-eval ref = `c6491878fb0a9d627dff50336c98bbf39e3b56e4`** (main) with
+transformers 5.10.1 + torch 2.12.1+cu126. The gate that blocks Specs 04–10 is cleared.
+
+**Bare-image bootstrap requirements discovered on the box** (folded into
+`scripts/spike/bootstrap.sh` + the `gpu` group; Spec 03 must mirror them):
+
+- `nvidia/cuda:12.6.3-cudnn-devel-ubuntu22.04` has no python/pip/torch and **no
+  `/workspace`** — install everything via `uv`; `mkdir -p /workspace` before use.
+- `setuptools>=77.0.1,<83`: gptqmodel + its sdist-only deps `tokenicer`/`logbar` use the
+  PEP 639 string license and fail to build under `setuptools<77`.
+- **`torchvision`** (cu126) — gptqmodel imports it at load but doesn't declare it.
+- **`ninja`** + a C/C++ toolchain (`build-essential`) on PATH — gptqmodel JIT-compiles its
+  sm_89 Marlin kernel at first load; torch path-looks-up `ninja` (export `venv/bin`).
+- ssh sessions don't inherit the image PATH (`export /usr/local/cuda/bin`), and
+  `vastai copy` is a no-op local→instance (use `scp -i`); `vastai destroy` needs `-y`.
+- **gsm8k**: lm-eval's gsm8k task uses the bare `gsm8k` id (renamed to `openai/gsm8k`);
+  `datasets>=4` rejects it. **The real GSM8K eval (Spec 05/06) must use `openai/gsm8k`.**
 
 ### quant env (`./quant/pyproject.toml`, `./quant/uv.lock`) — finalized & committed on the box (Spec 07)
 

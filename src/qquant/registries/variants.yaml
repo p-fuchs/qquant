@@ -39,7 +39,7 @@ variants:
   awq-official:
     quant_method: awq
     source: official
-    enabled: true   # CONTINGENT: set false if the sm_89 AWQ load smoke test (Spec 05) fails.
+    enabled: true   # Confirmed loadable on sm_89 by the Spec 02 spike (2026-06-23).
     model_id: Qwen/Qwen2.5-7B-Instruct-AWQ
     revision: b25037543e9394b818fdfca67ab2a00ecc7dd641
     notes: "Official Qwen AWQ (gemm, g128). NEVER install autoawq (archived; downgrades transformers)."
