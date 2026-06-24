@@ -104,6 +104,8 @@ def test_load_variant_dispatches_builds_and_assembles_metadata(monkeypatch):
     assert md["device_map"] == {"": 0}
     assert isinstance(md["load_seconds"], float)
     assert md["transformers_version"] == "5.10.1"
+    assert md["checkpoint_fingerprint"] is None
+    assert len(md) == 12
     # greedy forced post-build:
     assert lv.model.generation_config.do_sample is False
     assert lv.model.generation_config.num_beams == 1
