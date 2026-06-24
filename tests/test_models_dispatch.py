@@ -37,3 +37,18 @@ def test_resolve_selfquant_missing_raises(tmp_path):
     variants = load_variants()
     with pytest.raises(FileNotFoundError):
         resolve_model_source(variants["awq-selfquant"], checkpoints_root=tmp_path)
+
+
+def test_builders_cover_quant_methods_exactly():
+    from qquant.models.loaders import BUILDERS
+    from qquant.registry import QUANT_METHODS
+
+    assert set(BUILDERS.keys()) == set(QUANT_METHODS)
+
+
+def test_every_registered_variant_maps_to_a_builder():
+    from qquant.models.loaders import BUILDERS
+
+    variants = load_variants()
+    for v in variants.values():
+        assert v.quant_method in BUILDERS, f"{v.id}: no builder for {v.quant_method!r}"
