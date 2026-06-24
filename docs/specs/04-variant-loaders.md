@@ -63,8 +63,15 @@ the greedy-determinism enforcement, the single-GPU device placement, and the
 ## Interface
 
 All code lives under `src/qquant/models/`. Type hints for torch/transformers objects are
-written as strings/`Any` so the file parses without those libraries installed; the heavy
-imports happen at module import time of `qquant.models` (never of the torch-free core).
+written as strings/`Any` so the file parses without those libraries installed. **The heavy
+imports (`torch`, `transformers`, `bitsandbytes`, …) are *deferred* — performed inside the
+builder function bodies, never at module top.** Importing `qquant.models` therefore pulls in
+only stdlib + the torch-free `qquant.registry`, so the dispatch table (`BUILDERS` keys),
+`resolve_model_source`, and `force_greedy` are unit-testable on the macOS dev laptop (where
+the `gpu` group is not installed); a builder only touches torch when it actually runs, on the
+GPU box. This is *not* the torch-free core (§ contracts 7) — the umbrella `qquant` CLI must
+still never import `qquant.models` — but deferring the imports keeps the CPU-only test plan
+(`test_models_dispatch.py` / `test_models_greedy.py`) runnable off-GPU.
 
 ```python
 # src/qquant/models/loaders.py
@@ -184,7 +191,9 @@ source.path_or_repo, revision=source.revision)`. Only the quantization knobs dif
 - `src/qquant/models/__init__.py` — public re-exports listed above.
 - `src/qquant/models/loaders.py` — `ModelSource`, `LoadedVariant`, `resolve_model_source`,
   `BUILDERS` + the six builder functions, `load_variant`, `smoke_test_load`. Heavy imports
-  (`torch`, `transformers`) at top of this file.
+  (`torch`, `transformers`, `bitsandbytes`, …) are **deferred into the builder bodies**, so
+  importing the module is torch-free and the dispatch/source-resolution tests run on the
+  laptop; the imports execute only when a builder runs on the GPU box.
 - `src/qquant/models/greedy.py` — `force_greedy` (kept separate so it is unit-testable with a
   stub `generation_config`, no torch needed). Re-exported by `loaders`/`__init__`.
 - `tests/test_models_dispatch.py` — CPU-only: `set(BUILDERS) == QUANT_METHODS`; every variant
