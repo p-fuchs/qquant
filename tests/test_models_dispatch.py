@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -162,3 +164,20 @@ def test_smoke_test_load_never_raises(monkeypatch):
     ok, msg = loaders.smoke_test_load("awq-official")
     assert ok is False
     assert "kapow" in msg
+
+
+def test_importing_qquant_models_is_torch_free():
+    """Importing the package (not running a builder) must not pull torch in.
+
+    Run in a fresh interpreter so another test's torch import can't mask a regression.
+    """
+    code = (
+        "import importlib, sys;"
+        "importlib.import_module('qquant.models');"
+        "bad=[m for m in sys.modules if m=='torch' or m.startswith('torch.')];"
+        "sys.exit(1 if bad else 0)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, f"qquant.models imported torch: {result.stderr}"

@@ -80,3 +80,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "gpu: requires a CUDA GPU; run on the vast.ai box (auto-skipped without CUDA)",
+]
