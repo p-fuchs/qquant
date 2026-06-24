@@ -13,9 +13,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
-from qquant.registry import Variant
+from qquant.models.greedy import force_greedy
+from qquant.registry import Variant, load_variants
 
 _LOCAL_PREFIX = "local:"
 
@@ -246,3 +248,134 @@ BUILDERS: dict[str, Builder] = {
     "awq": _build_awq,
     "compressed-tensors": _build_compressed_tensors,
 }
+
+
+@dataclass
+class LoadedVariant:
+    """A loaded, greedy-forced, GPU-resident model ready for HFLM / profiling."""
+
+    variant: Variant
+    model: Any  # transformers PreTrainedModel, already device-placed
+    tokenizer: Any  # PreTrainedTokenizerBase
+    metadata: dict[str, Any]
+
+    def unload(self) -> None:
+        """Free the model and empty the CUDA cache so the next variant can load."""
+        import gc
+
+        self.model = None
+        self.tokenizer = None
+        gc.collect()
+        try:  # torch may be absent (laptop) — unload() must still drop references
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def __enter__(self) -> LoadedVariant:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.unload()
+
+
+def _param_dtype(model: Any) -> str:
+    try:
+        return str(next(model.parameters()).dtype)
+    except Exception:
+        return ""
+
+
+def load_variant(
+    variant_id: str,
+    *,
+    variants: dict[str, Variant] | None = None,
+    checkpoints_root: str | Path = "checkpoints",
+    device_map: Any = None,
+    attn_implementation: str = "sdpa",
+    trust_remote_code: bool = False,
+) -> LoadedVariant:
+    """Resolve source, dispatch on quant_method, force greedy, assert no offload.
+
+    Raises ``KeyError`` for an unknown id, ``ValueError`` for a disabled variant, and
+    ``RuntimeError`` if the resolved device map offloads any shard to ``cpu``/``disk``.
+    """
+    variants = variants if variants is not None else load_variants()
+    if variant_id not in variants:
+        raise KeyError(f"unknown variant id {variant_id!r}; known: {sorted(variants)}")
+    variant = variants[variant_id]
+    if not variant.enabled:
+        raise ValueError(f"variant {variant_id!r} is disabled in the registry")
+
+    source = resolve_model_source(variant, checkpoints_root)
+    builder = BUILDERS[variant.quant_method]
+    opts = {
+        "device_map": device_map if device_map is not None else {"": 0},
+        "attn_implementation": attn_implementation,
+        "trust_remote_code": trust_remote_code,
+    }
+
+    t0 = perf_counter()
+    model, tokenizer, builder_meta = builder(variant, source, opts)
+    load_seconds = perf_counter() - t0
+
+    force_greedy(model)
+
+    device_map_resolved = dict(getattr(model, "hf_device_map", {}) or {})
+    offloaded = {str(d) for d in device_map_resolved.values()} & {"cpu", "disk"}
+    if offloaded:
+        raise RuntimeError(
+            f"variant {variant_id!r} offloaded to {sorted(offloaded)} "
+            f"(device_map={device_map_resolved}); refusing — corrupts Spec 06 timings"
+        )
+
+    metadata = {
+        "variant_id": variant.id,
+        "quant_method": variant.quant_method,
+        "model_source": source.path_or_repo,
+        "model_revision": source.revision,
+        "is_local": source.is_local,
+        "dtype": builder_meta.get("dtype"),
+        "param_dtype": _param_dtype(model),
+        "attn_implementation": attn_implementation,
+        "device_map": device_map_resolved,
+        "load_seconds": load_seconds,
+        "transformers_version": builder_meta.get("transformers_version"),
+        "checkpoint_fingerprint": builder_meta.get("checkpoint_fingerprint"),
+    }
+    return LoadedVariant(
+        variant=variant, model=model, tokenizer=tokenizer, metadata=metadata
+    )
+
+
+def smoke_test_load(
+    variant_id: str,
+    *,
+    variants: dict[str, Variant] | None = None,
+    checkpoints_root: str | Path = "checkpoints",
+) -> tuple[bool, str]:
+    """Load, generate 1 token, unload; return (ok, message) WITHOUT raising.
+
+    Used for the awq-official contingency: on (False, msg), operator sets enabled=false.
+    """
+    try:
+        lv = load_variant(
+            variant_id, variants=variants, checkpoints_root=checkpoints_root
+        )
+    except Exception as exc:
+        return False, f"load failed for {variant_id!r}: {exc!r}"
+    try:
+        import torch
+
+        device = next(lv.model.parameters()).device
+        enc = lv.tokenizer("Hello", return_tensors="pt")
+        enc = {k: v.to(device) for k, v in enc.items()}
+        with torch.no_grad():
+            lv.model.generate(**enc, max_new_tokens=1, do_sample=False)
+        return True, f"{variant_id!r} loaded + generated 1 token on {device}"
+    except Exception as exc:
+        return False, f"forward failed for {variant_id!r}: {exc!r}"
+    finally:
+        lv.unload()
