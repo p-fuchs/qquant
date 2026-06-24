@@ -37,9 +37,12 @@ loaded, and MMLU must resume at **per-subject** granularity so a crash never rer
 - Per-task chat-template policy (from the registry, not hardcoded), greedy `gen_kwargs`,
   per-(variant,task) batch sizing, HumanEval double-env gating, IFEval `langdetect` seeding.
 - Persisting `meta.item_correct` and `meta.item_ids` (the per-item correctness vector + lm-eval
-  `doc_id`s) **inside the cell JSON's `meta` block of every generative cell** (gsm8k, humaneval,
-  ifeval) — the paired input the downstream McNemar reads **directly from the cell** (no
-  `.samples.jsonl` sidecar, no new path contract).
+  `doc_id`s) **inside the cell JSON's `meta` block of EVERY cell** — the 57 per-subject MMLU
+  cells (loglikelihood `acc` is 0/1 per doc) **and** the generative cells (gsm8k, humaneval,
+  ifeval) — the paired input the downstream **paired McNemar** reads **directly from the cell**
+  (no `.samples.jsonl` sidecar, no new path contract). *Why all cells:* the decision-log makes
+  McNemar gate **all** quality claims and the overview's RQ2 calls for a per-MMLU-subject paired
+  significance test, so MMLU cells must carry their item vectors too.
 - Persisting lm-eval's `mmlu` group aggregate (`{acc, acc_stderr}`) to
   `results/_meta/mmlu_group_<variant>.json` for Spec 09's MMLU reconciliation.
 - A determinism smoke (run a task twice, assert identical output) and a bf16-HumanEval sanity gate.
@@ -153,8 +156,10 @@ def extract_stderr(results_for_task: dict, primary_metric: str) -> float | None:
     """Best-effort '<metric>_stderr,*' lookup; None if absent (e.g. pass@1)."""
 
 # wilson_interval is NOT reimplemented here. The SINGLE implementation lives in
-# qquant.aggregate.stats (Spec 09 owns it); qquant.eval.metrics imports/re-exports it for the
-# eval-time HumanEval pass@1 CI (where lm-eval emits no stderr):
+# qquant.aggregate.stats — Spec 05 CREATES that module now (just wilson_interval; pure-math,
+# torch-free) as the forward-declared SSOT home; Spec 09 later EXTENDS the same module (MMLU
+# weighting, paired McNemar, …) without redefining wilson_interval. qquant.eval.metrics
+# imports/re-exports it for the eval-time HumanEval pass@1 CI (where lm-eval emits no stderr):
 from qquant.aggregate.stats import wilson_interval   # (k, n, confidence=0.95) -> (lo, hi)
 ```
 
@@ -204,24 +209,30 @@ class EvalRunner:
 - Cells: `cell_path(results_root, variant, task, subject)` — `<subject>.json` (MMLU, subject =
   bare slug e.g. `anatomy`) / `result.json` (others), conforming to `cell_result.schema.json` v1.
 - `meta.item_correct` (list of `0/1`) + `meta.item_ids` (lm-eval `doc_id`s) persisted **inside
-  every generative cell's JSON** — the paired input Spec 09 reads **directly from the cell** for
-  McNemar (no `.samples.jsonl` sidecar). `meta.n_correct` (k) for HumanEval Wilson CI.
+  every cell's JSON, including each MMLU per-subject cell** — the paired input Spec 09 reads
+  **directly from the cell** for McNemar (no `.samples.jsonl` sidecar). `meta.n_correct` (k) for
+  HumanEval Wilson CI.
 
 ## Files to create
 
 ```
+src/qquant/aggregate/__init__.py   # NEW package: forward-declared SSOT home for Spec 09; torch-free
+src/qquant/aggregate/stats.py      # wilson_interval(k, n, confidence=0.95) -> (lo, hi)  (pure-math, torch-free; Spec 09 EXTENDS this module, never redefines wilson)
 src/qquant/eval/__init__.py        # lazy-import package; re-exports EvalRunner, RunSummary, build_cell
 src/qquant/eval/hflm.py            # build_hflm  (lazy import lm_eval)
 src/qquant/eval/policy.py          # simple_evaluate_kwargs, greedy_gen_kwargs  (torch-free)
 src/qquant/eval/metrics.py         # extract_metric, extract_stderr; re-exports wilson_interval from qquant.aggregate.stats  (torch-free)
+src/qquant/eval/datasets.py        # apply_dataset_overrides(): rewrite bare gsm8k -> openai/gsm8k (+ drop stale revision) at runtime; lazy import datasets
 src/qquant/eval/results.py         # build_cell, write_cell  (torch-free; uses validate_cell + cell_path)
 src/qquant/eval/manifest.py        # load_manifest, default_manifest  (torch-free)
-src/qquant/eval/runner.py          # EvalRunner, RunSummary  (lazy import lm_eval + Spec-04 loader)
+src/qquant/eval/runner.py          # EvalRunner, RunSummary  (lazy import lm_eval + Spec-04 loader; calls apply_dataset_overrides before eval)
 src/qquant/eval/cli.py             # main()  -> qquant-eval entry point (lazy)
-tests/test_eval_metrics.py         # wilson_interval values; metric_keys order / suffix drift; stderr
-tests/test_eval_results.py         # build_cell validates; config==cell_provenance; atomic write; is_cell_done round-trip
-tests/test_eval_manifest.py        # parse/validate; id guards; default_manifest == enabled matrix
-tests/test_eval_runner.py          # fake load_model + fake evaluate_fn: load-once, skip-when-done, 57 MMLU cells, policy passthrough, code-exec gating
+tests/test_aggregate_stats.py      # wilson_interval reference values; k=0 and k=n edge cases  (CPU)
+tests/test_eval_metrics.py         # metric_keys order / suffix drift; stderr; wilson re-export reachable  (CPU)
+tests/test_eval_datasets.py        # apply_dataset_overrides maps gsm8k -> openai/gsm8k (id + revision rewrite), via a fake datasets loader  (CPU)
+tests/test_eval_results.py         # build_cell validates; config==cell_provenance; atomic write; is_cell_done round-trip  (CPU)
+tests/test_eval_manifest.py        # parse/validate; id guards; default_manifest == enabled matrix  (CPU)
+tests/test_eval_runner.py          # fake load_model + fake evaluate_fn: load-once, skip-when-done, 57 MMLU cells, policy passthrough, code-exec gating  (CPU)
 ```
 
 Plus the one-line `[project.scripts]` addition to `pyproject.toml`. No change to `contracts.md`,
@@ -249,10 +260,12 @@ the schema, the registries, or other specs.
 - **MMLU = 57 resumable per-subject cells.** `run_variant` plans missing subjects via
   `missing_cells` (under the active `cell_provenance`), runs ONE `simple_evaluate` over only the
   missing `mmlu_<subject>` subtasks, then writes one cell per subject (subject = bare slug;
-  `task_lm_eval = mmlu_<subject>`; per-subject `acc`, `acc_stderr`, and n stored). *Why*: a crash
-  resumes at subject granularity, not all 57; weighted aggregation + a single error-propagated
-  stderr is Spec 09's job and needs per-subject n + stderr. A test asserts the emitted subjects
-  equal `set(MMLU_SUBJECTS)`.
+  `task_lm_eval = mmlu_<subject>`; per-subject `acc`, `acc_stderr`, n, **and that subject's
+  per-item `meta.item_correct`/`meta.item_ids` from `log_samples`** — so paired McNemar on MMLU
+  is possible, per the decision-log). *Why*: a crash resumes at subject granularity, not all 57;
+  weighted aggregation + a single error-propagated stderr is Spec 09's job and needs per-subject
+  n + stderr, and the item vectors feed the per-MMLU-subject significance test. A test asserts
+  the emitted subjects equal `set(MMLU_SUBJECTS)`.
 - **Persist the lm-eval `mmlu` group number (for Spec 09's reconcile).** A MMLU run also yields
   lm-eval's `mmlu` **group** aggregate (`{acc, acc_stderr}`); this spec writes it to
   `results/_meta/mmlu_group_<variant>.json` (located via `Paths.meta_dir`), recording
@@ -279,6 +292,13 @@ the schema, the registries, or other specs.
 - **IFEval.** Set `langdetect.DetectorFactory.seed = 0` before any ifeval run. *Why*: langdetect is
   nondeterministic otherwise, perturbing the language-instruction checks. nltk `punkt`/`punkt_tab`
   are pre-downloaded by bootstrap (Spec 03); the runner only asserts availability.
+- **gsm8k dataset id (`openai/gsm8k`).** lm-eval's `gsm8k` task references the bare `gsm8k` repo
+  id, which `datasets>=4` rejects (`HfUriError`); the working id is `openai/gsm8k`.
+  `qquant.eval.datasets.apply_dataset_overrides()` rewrites the id (and drops the stale revision)
+  at the `datasets` layer at runtime — mirroring the Spec-02 spike — and the runner calls it once
+  before any gsm8k eval. *Why here:* Spec 05 owns the gsm8k run (its own GPU smoke #12 runs
+  gsm8k), so the eval is self-contained rather than dependent on an unbuilt Spec-03 bootstrap
+  task-yaml patch. `datasets` is imported lazily inside the shim (off the torch-free import path).
 - **metric key drift.** `extract_metric` walks `task.metric_keys` in order (e.g.
   `pass@1,create_test → pass@1,none → pass@1`; `acc,none → acc`), so a suffix change in lm-eval
   doesn't silently drop a metric. *Why*: lm-eval result keys carry filter suffixes that drift.
@@ -296,6 +316,12 @@ the schema, the registries, or other specs.
   already a `PROVENANCE_KEYS` entry, a re-quantization (new base/calibration/algorithm) changes the
   fingerprint and `is_cell_done` marks the affected cells **stale** — **no code or
   `PROVENANCE_KEYS` change is needed**. *(Spec 07 emits the manifest; decision-log → self-quant.)*
+  **Build order:** Spec 07's `quant_manifest.json` does not exist yet, so this self-quant
+  fingerprint path is authored against that interface but **verified post-Spec-07**. The
+  official-core variants (the v1-now run) use the pinned-SHA `model_revision` straight from
+  Spec 04's `metadata["model_revision"]`; self-quant is a deferrable fast-follow (decision-log →
+  Scope), so reusing Spec 04's `metadata["checkpoint_fingerprint"]` is an acceptable fallback
+  until Spec 07 lands the structured manifest.
 - **lm-eval × transformers v5 risk.** lm-eval `0.4.12` is the verified fallback pin;
   `apply_chat_template` on v5 is open upstream (issue #3537). Spec 02's spike is the go/no-go gate;
   if it pins a different v5-working lm-eval commit, only the resolved `lm_eval_version` string
@@ -306,8 +332,9 @@ the schema, the registries, or other specs.
 1. `pyproject.toml` registers `qquant-eval = "qquant.eval.cli:main"`; `qquant-eval --help` and
    `python -m qquant.eval.cli --help` both succeed.
 2. The torch-free guard stays green: `import qquant` (+ core modules) pulls no `torch`; and
-   `qquant.eval.metrics`, `qquant.eval.results`, `qquant.eval.manifest`, `qquant.eval.policy`
-   import on macOS **without** `torch` or `lm_eval` in `sys.modules`.
+   `qquant.aggregate.stats`, `qquant.eval.metrics`, `qquant.eval.results`, `qquant.eval.manifest`,
+   `qquant.eval.policy`, `qquant.eval.datasets` import on macOS **without** `torch` or `lm_eval`
+   in `sys.modules` (`datasets` may import only when `apply_dataset_overrides` is actually called).
 3. `wilson_interval(k, n)` matches known reference values (e.g. `k=140,n=164` → ≈`[0.797, 0.910]`),
    handles `k=0` and `k=n`; for a HumanEval cell `metric_value == k/n` and `meta.n_correct == k`.
 4. `extract_metric` returns the first matching key in `metric_keys` order and raises `KeyError`
@@ -329,9 +356,10 @@ the schema, the registries, or other specs.
     `HF_ALLOW_CODE_EVAL=1` and `QQUANT_ALLOW_CODE_EXEC=1`; when both set, `confirm_run_unsafe_code=
     True` is passed to `evaluate_fn` (asserted via fake).
 11. Running ifeval sets `langdetect.DetectorFactory.seed == 0` (asserted).
-12. **GPU smoke (opt-in marker, Linux only):** `qquant-eval --variant bf16 --task gsm8k --limit 8`
-    plus `--determinism-check bf16 gsm8k` produce a schema-valid cell and identical
-    `metric_value` + `item_correct` across two runs.
+12. **GPU smoke (opt-in `@pytest.mark.gpu`, Linux only):** `qquant-eval --variant bf16 --task
+    gsm8k --limit 8` plus `--determinism-check bf16 gsm8k` build a schema-valid cell **in memory**
+    (validated, not persisted to the results tree — `--limit`/smoke never write, per #13) and
+    yield identical `metric_value` + `item_correct` across two runs.
 13. Every written cell has `n_samples == len(meta.item_correct) == len(meta.item_ids)` (the paired
     inputs Spec 09 consumes, read directly from the cell — no sidecar); `--limit`/smoke runs
     refuse to write cells.
@@ -340,6 +368,11 @@ the schema, the registries, or other specs.
     `results/_meta/mmlu_group_<variant>.json` (via `Paths.meta_dir`) with `{acc, acc_stderr}` plus
     `n_subjects` and `lm_eval_version`; the file is the deterministic input Spec 09's
     `reconcile_mmlu` reads.
+16. `apply_dataset_overrides()` rewrites the bare `gsm8k` dataset id to `openai/gsm8k` (and clears
+    the stale revision), asserted with a fake `datasets` loader on macOS (no network); the runner
+    invokes it before any gsm8k eval so the bare id never reaches `datasets>=4`.
+17. `wilson_interval` is defined once in `qquant.aggregate.stats` (pure-math, torch-free) and
+    re-exported by `qquant.eval.metrics`; importing `qquant.aggregate.stats` pulls no `torch`.
 
 ## Risks & mitigations
 
