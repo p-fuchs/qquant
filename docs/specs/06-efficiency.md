@@ -329,8 +329,10 @@ Required top level: `schema_version` (==1), `variant`, `disk`, `memory`, `throug
 4. **Throughput buckets:** `throughput` has `short/medium/long`, each with finite, positive
    `prefill_tok_s`, `decode_tok_s`, `e2e_latency_s`, `ttft_s`, reported as the **median** over
    `--repeats` after discarding `--warmup` iterations; `gen_tokens == decode_tokens` exactly.
-5. **Memory ordering:** `generate_peak_bytes >= load_peak_bytes >= weights_resident_bytes > 0`,
-   all finite and `<= 24 GiB`; both allocated and reserved are recorded.
+5. **Memory ordering:** `weights_resident_bytes > 0`; each of `load_peak_bytes` and
+   `generate_peak_bytes` is `>= weights_resident_bytes`; all three are finite and `<= 24 GiB`;
+   both allocated and reserved are recorded. (`generate_peak >= load_peak` is **not** asserted —
+   the load-time scratch on a ~15 GB bf16 load can exceed a small-prompt generate transient.)
 6. **OOM sweep:** `max_batch_size.value >= 1`; `oom_at` is either `> value` or `null` (ceiling
    reached); the sweep runs **after** all other measurements; on `torch.cuda.OutOfMemoryError`/
    `RuntimeError("out of memory")` it `empty_cache()`s, records the boundary, and continues
@@ -362,8 +364,10 @@ Required top level: `schema_version` (==1), `variant`, `disk`, `memory`, `throug
   observed value and warns if unset — the launcher (Spec 03/08) exports
   `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` in the process env.
 - **gptqmodel JIT compile / cuBLAS autotune inflates the first iteration.** Warmup iterations
-  discard it; `load_peak` may miss kernel scratch buffers, but `generate_peak` (measured after a
-  real forward) captures them — that is the figure the report uses for the VRAM headroom claim.
+  discard it. `load_peak` captures weight-loading scratch; `generate_peak` captures the KV-cache
+  and logits transient. Either can be the larger figure: `load_peak` may dominate for large models
+  with small prompts, so neither `generate_peak >= load_peak` nor the reverse is guaranteed. The
+  report uses **both** for the VRAM headroom claim.
 - **Prefill/decode conflation.** Forcing `min_new_tokens == max_new_tokens` removes EOS-length
   variance; TTFT is measured with a separate `max_new_tokens=1` call so prefill and steady-state
   decode are cleanly separated.

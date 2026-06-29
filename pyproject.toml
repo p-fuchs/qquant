@@ -25,6 +25,7 @@ dependencies = [
 qquant = "qquant.cli:main"
 qquant-spike = "qquant.orchestrate.spike:main"  # Spec 02
 qquant-eval = "qquant.eval.cli:main"  # Spec 05
+qquant-profile = "qquant.efficiency.cli:main"  # Spec 06
 
 [build-system]
 requires = ["hatchling"]
