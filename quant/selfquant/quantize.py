@@ -30,6 +30,22 @@ _ALGORITHM = {"gptq-selfquant": "gptq", "awq-selfquant": "awq"}
 _DEFAULT_CHECKPOINTS_ROOT = "checkpoints/self-quant"
 
 
+def _print_observed_weight_args(variant_id: str, out_dir: Path) -> None:
+    """Best-effort done-when #3 confirmation: print the produced config.json weight
+    quant args so the operator can verify both checkpoints match the controlled target.
+    Never raises (the authoritative check compares the two manifests/configs)."""
+    import json
+
+    try:
+        config = json.loads((out_dir / "config.json").read_text())
+        groups = (config.get("quantization_config") or {}).get("config_groups") or {}
+        first = next(iter(groups.values()), {})
+        weights = first.get("weights") if isinstance(first, dict) else None
+        print(f"[{variant_id}] config.json weight quant args: {weights}")
+    except Exception as exc:  # noqa: BLE001 — diagnostic print only
+        print(f"[{variant_id}] (could not read config.json weight args: {exc!r})")
+
+
 def recipe_for(variant_id: str) -> list:
     if variant_id == "gptq-selfquant":
         return gptq_recipe()
@@ -90,6 +106,7 @@ def quantize_variant(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out_dir, save_compressed=True)
+    _print_observed_weight_args(variant_id, out_dir)
 
     write_manifest(
         out_dir,
