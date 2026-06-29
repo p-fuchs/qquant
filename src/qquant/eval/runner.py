@@ -21,8 +21,8 @@ from qquant.config import RunConfig, cell_provenance
 from qquant.eval.policy import simple_evaluate_kwargs
 from qquant.eval.results import build_cell, cell_inputs_from_results, write_cell
 from qquant.matrix import Cell, expand_matrix, missing_cells
-from qquant.paths import Paths
-from qquant.registry import Task, Variant
+from qquant.paths import Paths, cell_path
+from qquant.registry import MMLU_SUBJECTS, Task, Variant
 
 log = logging.getLogger("qquant.eval")
 
@@ -105,6 +105,18 @@ class EvalRunner:
             per_task_missing[task.id] = missing_cells(
                 expanded, self.results_root, active_config=active
             )
+        # Drop gated code-exec tasks before the load decision so the model is
+        # never loaded for a humaneval-only manifest when the gate is unset.
+        for task in tasks:
+            if task.code_exec and not code_exec_allowed():
+                if per_task_missing.get(task.id):
+                    log.warning(
+                        "skipping %s/%s: code-exec gate not set "
+                        "(need HF_ALLOW_CODE_EVAL=1 and QQUANT_ALLOW_CODE_EXEC=1)",
+                        variant.id,
+                        task.id,
+                    )
+                per_task_missing[task.id] = []
         if not any(per_task_missing.values()):
             return []  # never load a fully-present variant
 
@@ -187,7 +199,7 @@ class EvalRunner:
             write_cell(doc, cell.path(self.results_root))
             written.append(cell)
         if task.id == "mmlu":
-            self._write_mmlu_group(variant, results)
+            self._write_mmlu_group(variant)
         return written
 
     def _meta_extra(self, variant: Variant, task: Task, inp: dict) -> dict:
@@ -211,19 +223,53 @@ class EvalRunner:
                 )
         return meta
 
-    def _write_mmlu_group(self, variant: Variant, results: dict) -> None:
-        import json as _json
+    def _write_mmlu_group(self, variant: Variant) -> None:
+        """Pool all 57 per-subject cells and write the MMLU group aggregate.
 
-        group = results.get("results", {}).get("mmlu", {})
-        if not group:
-            return
+        Reads every subject cell from disk so a partial/resumed run (where some
+        subjects were written in a prior invocation) still yields a correct group.
+        Skips writing if any subject is missing from disk.
+        """
+        import json as _json
+        import math as _math
+
+        n_correct_list: list[int] = []
+        n_samples_list: list[int] = []
+        for subj in MMLU_SUBJECTS:
+            p = cell_path(self.results_root, variant.id, "mmlu", subj)
+            if not p.exists():
+                log.warning(
+                    "mmlu group for %s incomplete: subject %s not on disk — "
+                    "skipping group file until all 57 subjects are present",
+                    variant.id,
+                    subj,
+                )
+                return
+            try:
+                doc = _json.loads(p.read_text())
+            except (OSError, _json.JSONDecodeError):
+                log.warning(
+                    "mmlu group for %s: could not read subject %s — skipping group",
+                    variant.id,
+                    subj,
+                )
+                return
+            n_correct_list.append(doc["meta"]["n_correct"])
+            n_samples_list.append(doc["n_samples"])
+
+        total_correct = sum(n_correct_list)
+        total_n = sum(n_samples_list)
+        acc = total_correct / total_n
+        acc_stderr = _math.sqrt(acc * (1 - acc) / total_n)
+        n_subjects = len(n_correct_list)
+
         meta_dir = Paths.from_root(self.results_root).meta_dir
         meta_dir.mkdir(parents=True, exist_ok=True)
         payload = {
             "variant": variant.id,
-            "acc": group.get("acc,none", group.get("acc")),
-            "acc_stderr": group.get("acc_stderr,none", group.get("acc_stderr")),
-            "n_subjects": 57,
+            "acc": acc,
+            "acc_stderr": acc_stderr,
+            "n_subjects": n_subjects,
             "lm_eval_version": self.run.lm_eval_version,
         }
         (meta_dir / f"mmlu_group_{variant.id}.json").write_text(

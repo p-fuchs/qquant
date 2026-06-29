@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import replace as dc_replace
 from types import SimpleNamespace
+
+import pytest
 
 from qquant.config import RunConfig, Seeds, cell_provenance
 from qquant.eval.runner import EvalRunner, RunSummary
@@ -147,10 +150,10 @@ def test_mmlu_writes_57_cells_with_item_vectors(tmp_path):
             pass
 
     def fake_eval(model=None, tasks=None, **kw):
-        res = _results_for(tasks, "acc")
-        # Add the MMLU group aggregate so _write_mmlu_group is exercised.
-        res["results"]["mmlu"] = {"acc,none": 0.7, "acc_stderr,none": 0.01}
-        return res
+        # Return only leaf-subtask shape — no "mmlu" group key.
+        # The group aggregate must be computed from per-subject cells, not from
+        # a group key that the real lm-eval call never emits.
+        return _results_for(tasks, "acc")
 
     runner = EvalRunner(
         tmp_path, _run(), load_model=lambda vid: FakeLoaded(), evaluate_fn=fake_eval
@@ -162,15 +165,78 @@ def test_mmlu_writes_57_cells_with_item_vectors(tmp_path):
     one = json.loads(cell_path(tmp_path, "bf16", "mmlu", "anatomy").read_text())
     assert one["task_lm_eval"] == "mmlu_anatomy"
     assert one["meta"]["item_correct"] == [1, 0]
-    # Verify the group aggregate file was written.
+    # Verify the group aggregate file was written (pooled from per-subject cells).
     group_file = tmp_path / "_meta" / "mmlu_group_bf16.json"
     assert group_file.exists(), "_meta/mmlu_group_bf16.json was not written"
     group_doc = json.loads(group_file.read_text())
     assert group_doc["variant"] == "bf16"
-    assert group_doc["acc"] == 0.7
-    assert group_doc["acc_stderr"] == 0.01
+    # Each subject: n_correct=1, n=2 → pooled acc == 0.5, total_n == 57*2 == 114
+    assert group_doc["acc"] == pytest.approx(0.5)
+    assert group_doc["acc_stderr"] == pytest.approx(math.sqrt(0.5 * 0.5 / 114))
     assert group_doc["n_subjects"] == 57
     assert group_doc["lm_eval_version"] == _run().lm_eval_version
+
+
+def test_mmlu_group_pools_partial_rerun(tmp_path):
+    """Pre-write 56 subjects; run the 1 missing; group must pool all 57 from disk."""
+    variants = load_variants()
+    tasks = load_tasks()
+    run = _run()
+    run_for_bf16 = dc_replace(run, model_revision=variants["bf16"].revision)
+    prov = cell_provenance(run_for_bf16, tasks["mmlu"], "bf16")
+
+    # Pre-write all subjects except the last one to simulate a partial prior run.
+    missing_subject = MMLU_SUBJECTS[-1]
+    all_cells = expand_matrix([variants["bf16"]], [tasks["mmlu"]])
+    for cell in all_cells:
+        if cell.subject == missing_subject:
+            continue
+        doc = {
+            "schema_version": 1,
+            "cell_id": cell.cell_id,
+            "variant": "bf16",
+            "task": "mmlu",
+            "subject": cell.subject,
+            "task_lm_eval": cell.lm_eval_task,
+            "primary_metric": "acc",
+            "metric_value": 0.5,
+            "metric_stderr": 0.01,
+            "n_samples": 2,
+            "extra_metrics": {},
+            "config": prov,
+            "meta": {"item_correct": [1, 0], "item_ids": [0, 1], "n_correct": 1},
+        }
+        p = cell.path(tmp_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(doc))
+
+    class FakeLoaded:
+        model = object()
+        tokenizer = object()
+        metadata = {"model_revision": variants["bf16"].revision}
+
+        def unload(self):
+            pass
+
+    def fake_eval(model=None, tasks=None, **kw):
+        return _results_for(tasks, "acc")
+
+    runner = EvalRunner(
+        tmp_path, run, load_model=lambda vid: FakeLoaded(), evaluate_fn=fake_eval
+    )
+    written = runner.run_variant(variants["bf16"], [tasks["mmlu"]])
+    # Only the 1 missing subject should be written in this invocation.
+    assert len(written) == 1
+    assert written[0].subject == missing_subject
+    # Group file must now exist pooling all 57 (56 on-disk + 1 just written).
+    group_file = tmp_path / "_meta" / "mmlu_group_bf16.json"
+    assert group_file.exists(), (
+        "_meta/mmlu_group_bf16.json not written after partial rerun"
+    )
+    group_doc = json.loads(group_file.read_text())
+    assert group_doc["n_subjects"] == 57
+    assert group_doc["acc"] == pytest.approx(0.5)
+    assert group_doc["acc_stderr"] == pytest.approx(math.sqrt(0.5 * 0.5 / 114))
 
 
 def test_code_exec_skipped_unless_both_env_set(tmp_path, monkeypatch):
@@ -182,14 +248,21 @@ def test_code_exec_skipped_unless_both_env_set(tmp_path, monkeypatch):
     def fake_eval(model=None, tasks=None, **kw):
         raise AssertionError("must not eval a gated code-exec task")
 
+    load_calls: list[str] = []
+
+    def fake_load(vid):
+        load_calls.append(vid)
+        raise AssertionError("must not load model for a gated code-exec-only run")
+
     runner = EvalRunner(
         tmp_path,
         _run(),
-        load_model=lambda vid: _FakeLoaded(variants, vid),
+        load_model=fake_load,
         evaluate_fn=fake_eval,
     )
     written = runner.run_variant(variants["bf16"], [tasks["humaneval"]])
     assert written == []  # left missing, not errored
+    assert load_calls == [], f"load_model was called unexpectedly: {load_calls}"
 
 
 def test_code_exec_runs_and_passes_confirm_when_gated(tmp_path, monkeypatch):
