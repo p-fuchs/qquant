@@ -7,11 +7,16 @@ requires-python = ">=3.11,<3.12"
 
 # Pins per docs/specs/decision-log.md. llm-compressor's tight transformers<=5.10.1
 # window is why this is a SEPARATE uv project from the root eval env.
-# These are Linux + CUDA wheels; the lock is finalized on the vast.ai box (Spec 08).
+# These are Linux + CUDA wheels; the lock is finalized on the vast.ai box (Spec 07).
 dependencies = [
     "llmcompressor==0.12.0 ; sys_platform == 'linux'",
     "datasets>=4.8.4,<=5.0.0 ; sys_platform == 'linux'",
 ]
+
+[project.scripts]
+# Convenience console script for this isolated quant env. It is a SEPARATE uv project,
+# so it does NOT touch the root [project.scripts] reservations in contracts.md §7.
+qquant-selfquant = "selfquant.quantize:main"
 
 [build-system]
 requires = ["hatchling"]

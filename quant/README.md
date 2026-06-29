@@ -1,4 +1,4 @@
-# quant/ — self-quantization environment (Spec 08)
+# quant/ — self-quantization environment (Spec 07)
 
 Isolated uv project that **produces** the `gptq-selfquant` and `awq-selfquant`
 checkpoints with `llm-compressor`, from a single shared C4 calibration set, so the
@@ -16,4 +16,4 @@ cd quant && uv sync && uv run python -m selfquant.quantize --help
 ```
 
 Output checkpoints (compressed-tensors format) are written under `../checkpoints/self-quant/`
-and exfiltrated alongside results. See `docs/specs/08-*.md`.
+and exfiltrated alongside results (exfil owned by Spec 08). See `docs/specs/07-self-quant.md`.
