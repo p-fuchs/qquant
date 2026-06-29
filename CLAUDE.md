@@ -40,6 +40,20 @@ Keep entries terse and concrete.
 - **Offer query**: encode spaces in string values as `_` (e.g. `gpu_name=RTX_4090`). A
   default query (`external=false rentable=true verified=true`) is ANDed unless you pass
   `-n`. `vastai create instance` returns the new id as `new_contract` in `--raw` JSON.
+- **Download/bandwidth is billed at ~$0.04/GB and is a major cost** (verified 2026-06-29:
+  25.9 GB → $1.01). The bare `cuda:*-devel` image pull alone is ~25.9 GB ≈ **$1 per fresh
+  boot**; HF model pulls add more (Qwen2.5-7B base ~15 GB ≈ $0.6, each *official* gptq/awq
+  repo ~6 GB ≈ $0.24; bnb-int8/nf4 reuse the base = $0). So the download FLOOR for a
+  minimal-5 run is ~$2.3 *before any compute*. Budget downloads explicitly.
+- **Reuse the disk to pay download ONCE: `stop`, don't `destroy`.** `destroy` wipes the
+  disk (re-pay all downloads next time). `vastai stop instance <id>` halts GPU billing but
+  **preserves the disk** (image + venv + HF models), so `vastai start instance <id>`
+  resumes with everything cached — no re-download. A *stopped* instance still bills
+  **storage** (~$0.02/hr ≈ $0.5/day for ~100 GB), and if credit hits ~$0 vast **destroys**
+  it (wiping the disk) — so reuse needs a credit buffer. CRITICAL: the auto-destroy
+  dead-man's switch must be DISABLED for a reuse workflow (it would wipe the cached disk);
+  manage teardown manually (`stop` promptly after each compute session, `destroy` only at
+  the very end).
 - **The bare `nvidia/cuda:*-devel` image has no python/pip/torch** — install everything via
   `uv` at bootstrap (torch from the cu126 index, pinned to the decision-log version). The
   dead-man's switch therefore cannot use pip; it self-destroys via the REST API with
