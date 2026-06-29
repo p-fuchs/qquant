@@ -1,7 +1,7 @@
 # Spec 06 — Efficiency profiler (`qquant.efficiency` + `qquant-profile`)
 
-- **Status:** ready to implement
-- **Depends on:** 04 (unified variant loaders)
+- **Status:** ready to implement — open questions resolved 2026-06-29 (brainstorm; see "Resolved decisions" below)
+- **Depends on:** 04 (unified variant loaders) — ✅ DONE + merged
 - **Owns / Produces:** the `qquant.efficiency` package; the `qquant-profile` GPU entry point;
   the per-variant efficiency artifact `results/<variant>/efficiency.json` and its schema
   `src/qquant/schemas/efficiency_result.schema.json`. Consumed by Spec 08 (orchestration runs
@@ -374,20 +374,42 @@ Required top level: `schema_version` (==1), `variant`, `disk`, `memory`, `throug
 - **HF cache layout (blobs/symlinks).** Resolve real file sizes via `os.stat` following symlinks
   and sum weight files only; locate the snapshot with `huggingface_hub.snapshot_download(...,
   revision=variant.revision, local_files_only=True)` (the snapshot is guaranteed present post-load).
-- **Spec 04 loader symbol name not finalised.** This spec imports the Spec-04 loader entry symbol;
-  if Spec 04 names it differently, only the single import line changes (see open questions).
+- **Spec 04 loader contract (FINALISED — see Resolved decisions #1).** The profiler imports
+  `qquant.models.load_variant(variant_id: str, ...) -> LoadedVariant`; only the call line in
+  `profiler.py` depends on it, and it is now fixed against the shipped Spec 04 API.
 
 ---
 
-### Open questions (for the consistency-review gate)
+### Resolved decisions (brainstorm 2026-06-29; supersede the prior open questions)
 
-1. **Spec 04 loader contract.** Confirm the exact import: assumed
-   `qquant.models.load_variant(variant: Variant, *, device) -> Loaded` exposing `.model`
-   (HF `PreTrainedModel`, `eval()`, greedy-forced) and `.tokenizer`. Adjust the one import line in
-   `profiler.py` to match Spec 04's final symbol/return type.
-2. **Promote `efficiency_path` into `qquant.paths`?** Kept local to `qquant.efficiency.schema` to
-   avoid editing Spec 01's module now. If the consistency gate prefers all path-building in one
-   place, add `Paths.efficiency(variant)` to Spec 01 and have this module delegate to it.
-3. **Per-variant batch for throughput.** The decision-log per-(variant,task) batch sizes target
-   MMLU logits transients; for the throughput buckets we use batch 1 (latency-style) and report the
-   max-batch sweep separately. Confirm batch 1 is the intended throughput basis for the report.
+1. **Spec 04 loader contract — corrected against the shipped, merged Spec 04 API.** The real symbol
+   is `qquant.models.load_variant(variant_id: str, *, variants=None, checkpoints_root="checkpoints",
+   device_map=None, attn_implementation="sdpa", trust_remote_code=False) -> LoadedVariant` — it takes
+   the **string id**, not a `Variant`, and device placement is via `device_map` (default `{"": 0}` =
+   `cuda:0`); there is **no `device=` kwarg**. `LoadedVariant` is a dataclass with `.variant` (the
+   `Variant`), `.model` (HF `PreTrainedModel`, already `device_map`-placed and greedy-forced via
+   `force_greedy`), `.tokenizer`, `.metadata` (dict), and `.unload()` (drops refs + `empty_cache`);
+   it is also a context manager (`with load_variant(...) as loaded:`). The loader **already refuses**
+   any cpu/disk offload (`RuntimeError` "corrupts Spec 06 timings"), so the profiler is guaranteed a
+   clean GPU-resident model. Therefore:
+   - `profile_variant(variant, cfg, env_meta)` calls `load_variant(variant.id, device_map={"": <cfg.device-index>})`
+     (default `{"": 0}`), wrapped in `with ... as loaded:` (or explicit `loaded.unload()` in a
+     `finally`) so the OOM sweep's allocator state is dropped before the process exits.
+   - Provenance is **sourced from `loaded.metadata`** where present (it already exposes `dtype`,
+     `param_dtype`, `model_revision`, `quant_method`, `model_source`, `is_local`, `load_seconds`,
+     `transformers_version`, `checkpoint_fingerprint`) and only the GPU/runtime facts not in metadata
+     are introspected from torch (`torch.__version__`, `torch.version.cuda`,
+     `torch.cuda.get_device_name`). `config.dtype` = `loaded.metadata["dtype"]`; `model_revision` =
+     `loaded.metadata["model_revision"]` (the pinned SHA; `None` for self-quant).
+2. **`efficiency_path` stays local to `qquant.efficiency.schema`** — this is exactly the sanctioned
+   carve-out already written into `contracts.md §8` (own path helper / own schema / own predicate).
+   Spec 01's `qquant.paths` is **not** edited; no `Paths.efficiency(...)` is added.
+3. **Throughput buckets are measured at batch 1 (latency-style).** Prefill/decode tok/s, e2e latency,
+   and TTFT are all batch-1 per bucket; multi-batch capacity is captured only by the separate
+   `max_batch_size` OOM sweep. This isolates per-token speed and keeps the cross-variant comparison
+   apples-to-apples (no capacity mixed into the latency number).
+
+> **Implementation note for the plan:** `ProfileConfig.prompt_buckets` (a dict) must use
+> `field(default_factory=lambda: {"short": 128, "medium": 1024, "long": 4096})` — a bare mutable
+> default on a (frozen) dataclass is a `ValueError` at class definition. The shown `= {...}` default
+> is illustrative only.
