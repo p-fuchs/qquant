@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qquant.local/schemas/efficiency_result.schema.json",
+  "title": "qquant efficiency result",
+  "description": "Per-variant efficiency profile. schema_version 1.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "variant",
+    "disk",
+    "memory",
+    "throughput",
+    "max_batch_size",
+    "config"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "variant": { "type": "string", "minLength": 1 },
+    "quant_method": { "type": "string" },
+    "source": { "type": "string" },
+    "model_id": { "type": "string" },
+    "model_revision": { "type": ["string", "null"] },
+    "speed_label": { "enum": ["comparable", "runtime-confounded"] },
+    "confounded_metrics": { "type": "array", "items": { "type": "string" } },
+    "disk": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["weights_bytes", "source"],
+      "properties": {
+        "weights_bytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "snapshot_bytes": { "type": "integer", "minimum": 0 },
+        "weights_gib": { "type": "number" },
+        "source": { "enum": ["hf-cache", "local"] },
+        "path": { "type": "string" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "weights_resident_bytes",
+        "load_peak_bytes",
+        "generate_peak_bytes"
+      ],
+      "properties": {
+        "weights_resident_bytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "load_peak_bytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "load_peak_reserved_bytes": { "type": "integer", "minimum": 0 },
+        "generate_peak_bytes": { "type": "integer", "exclusiveMinimum": 0 },
+        "generate_peak_reserved_bytes": { "type": "integer", "minimum": 0 },
+        "load_peak_gib": { "type": "number" },
+        "generate_peak_gib": { "type": "number" }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "prompt_tokens",
+          "gen_tokens",
+          "prefill_tok_s",
+          "decode_tok_s",
+          "e2e_latency_s",
+          "ttft_s"
+        ],
+        "properties": {
+          "prompt_tokens": { "type": "integer", "exclusiveMinimum": 0 },
+          "gen_tokens": { "type": "integer", "exclusiveMinimum": 0 },
+          "prefill_tok_s": { "type": "number", "exclusiveMinimum": 0 },
+          "decode_tok_s": { "type": "number", "exclusiveMinimum": 0 },
+          "e2e_latency_s": { "type": "number", "exclusiveMinimum": 0 },
+          "ttft_s": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "max_batch_size": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["value", "ceiling"],
+      "properties": {
+        "value": { "type": "integer", "minimum": 1 },
+        "oom_at": { "type": ["integer", "null"] },
+        "ceiling": { "type": "integer", "minimum": 1 },
+        "seq_len": { "type": "integer", "minimum": 1 },
+        "gen_tokens": { "type": "integer", "minimum": 1 },
+        "ladder": { "type": "array", "items": { "type": "integer" } }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "gpu_name",
+        "dtype",
+        "torch_version",
+        "transformers_version",
+        "cuda_version",
+        "decode_tokens",
+        "prompt_buckets",
+        "batch_seq_len"
+      ]
+    },
+    "samples": { "type": "object" },
+    "meta": { "type": "object" }
+  }
+}
