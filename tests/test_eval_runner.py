@@ -2,12 +2,32 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace as dc_replace
+from types import SimpleNamespace
 
 from qquant.config import RunConfig, Seeds, cell_provenance
 from qquant.eval.runner import EvalRunner, RunSummary
 from qquant.matrix import expand_matrix
 from qquant.paths import cell_path
 from qquant.registry import MMLU_SUBJECTS, load_tasks, load_variants
+
+
+def _fake_datasets_module():
+    """Minimal fake datasets module accepted by apply_dataset_overrides."""
+    calls = []
+
+    def load_dataset(path, *args, **kwargs):
+        calls.append(("load_dataset", path, args, kwargs))
+        return object()
+
+    def load_dataset_builder(path, *args, **kwargs):
+        calls.append(("load_dataset_builder", path, args, kwargs))
+        return object()
+
+    mod = SimpleNamespace(
+        load_dataset=load_dataset, load_dataset_builder=load_dataset_builder
+    )
+    mod._calls = calls
+    return mod
 
 
 def _run():
@@ -99,7 +119,13 @@ def test_run_manifest_loads_once_and_writes_cells(tmp_path):
     def fake_eval(model=None, tasks=None, **kw):
         return _results_for(tasks, "exact_match")
 
-    runner = EvalRunner(tmp_path, _run(), load_model=fake_load, evaluate_fn=fake_eval)
+    runner = EvalRunner(
+        tmp_path,
+        _run(),
+        load_model=fake_load,
+        evaluate_fn=fake_eval,
+        datasets_module=_fake_datasets_module(),
+    )
     summary = runner.run_manifest([("bf16", "gsm8k")], variants, tasks)
     assert isinstance(summary, RunSummary)
     assert load_calls == ["bf16"]  # loaded exactly once
@@ -121,7 +147,10 @@ def test_mmlu_writes_57_cells_with_item_vectors(tmp_path):
             pass
 
     def fake_eval(model=None, tasks=None, **kw):
-        return _results_for(tasks, "acc")
+        res = _results_for(tasks, "acc")
+        # Add the MMLU group aggregate so _write_mmlu_group is exercised.
+        res["results"]["mmlu"] = {"acc,none": 0.7, "acc_stderr,none": 0.01}
+        return res
 
     runner = EvalRunner(
         tmp_path, _run(), load_model=lambda vid: FakeLoaded(), evaluate_fn=fake_eval
@@ -133,6 +162,15 @@ def test_mmlu_writes_57_cells_with_item_vectors(tmp_path):
     one = json.loads(cell_path(tmp_path, "bf16", "mmlu", "anatomy").read_text())
     assert one["task_lm_eval"] == "mmlu_anatomy"
     assert one["meta"]["item_correct"] == [1, 0]
+    # Verify the group aggregate file was written.
+    group_file = tmp_path / "_meta" / "mmlu_group_bf16.json"
+    assert group_file.exists(), "_meta/mmlu_group_bf16.json was not written"
+    group_doc = json.loads(group_file.read_text())
+    assert group_doc["variant"] == "bf16"
+    assert group_doc["acc"] == 0.7
+    assert group_doc["acc_stderr"] == 0.01
+    assert group_doc["n_subjects"] == 57
+    assert group_doc["lm_eval_version"] == _run().lm_eval_version
 
 
 def test_code_exec_skipped_unless_both_env_set(tmp_path, monkeypatch):
@@ -218,9 +256,47 @@ def test_run_smoke_builds_in_memory_without_writing(tmp_path):
         _run(),
         load_model=lambda vid: _FakeLoaded(variants, vid),
         evaluate_fn=fake_eval,
+        datasets_module=_fake_datasets_module(),
     )
     out = runner.run_smoke(variants["bf16"], tasks["gsm8k"], limit=8)
     assert out["cells"][0]["metric_value"] == 0.5
     assert out["cells"][0]["item_correct"] == [1, 0]
     # nothing persisted to the results tree
     assert not (tmp_path / "bf16").exists()
+
+
+def test_gsm8k_runner_applies_dataset_overrides(tmp_path):
+    """Runner must call apply_dataset_overrides() before any gsm8k eval.
+
+    Injects a fake datasets module and proves the patch flag was set and the
+    gsm8k->openai/gsm8k rewrite is active after run_variant completes.
+    """
+    from qquant.eval.datasets import _PATCH_FLAG
+
+    variants = load_variants()
+    tasks = load_tasks()
+    fake_ds = _fake_datasets_module()
+
+    def fake_eval(model=None, tasks=None, **kw):
+        return _results_for(tasks, "exact_match")
+
+    runner = EvalRunner(
+        tmp_path,
+        _run(),
+        load_model=lambda vid: _FakeLoaded(variants, vid),
+        evaluate_fn=fake_eval,
+        datasets_module=fake_ds,
+    )
+    runner.run_variant(variants["bf16"], [tasks["gsm8k"]])
+
+    # The patch flag must be set — proves apply_dataset_overrides was invoked.
+    assert getattr(fake_ds, _PATCH_FLAG, False), (
+        "apply_dataset_overrides was not called"
+    )
+
+    # Calling the patched loader with the bare id must rewrite to openai/gsm8k.
+    fake_ds.load_dataset("gsm8k", "main")
+    last_call = fake_ds._calls[-1]
+    assert last_call[1] == "openai/gsm8k", (
+        f"gsm8k was not rewritten; got path={last_call[1]!r}"
+    )

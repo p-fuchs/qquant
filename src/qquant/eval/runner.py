@@ -4,8 +4,10 @@ lm_eval / qquant.models / datasets / langdetect are imported lazily inside
 methods so importing this module stays torch-free.
 
 When a fake ``evaluate_fn`` is injected (test mode), the runner skips
-``build_hflm`` (requires lm_eval) and dataset overrides (requires datasets),
-so the test suite runs on the dev laptop without any GPU dependencies.
+``build_hflm`` (requires lm_eval) so the test suite runs on the dev laptop
+without any GPU dependencies.  ``apply_dataset_overrides`` is always called
+for gsm8k; pass a fake ``datasets_module`` in tests so the real ``datasets``
+package is not imported.
 """
 
 from __future__ import annotations
@@ -48,11 +50,13 @@ class EvalRunner:
         run: RunConfig,
         load_model=None,
         evaluate_fn=None,
+        datasets_module=None,
     ):
         self.results_root = Path(results_root)
         self.run = run
         self._load_model = load_model
         self._evaluate_fn = evaluate_fn
+        self._datasets_module = datasets_module
 
     # --- lazy defaults -------------------------------------------------------------
 
@@ -123,13 +127,13 @@ class EvalRunner:
                     import langdetect
 
                     langdetect.DetectorFactory.seed = 0
-                # Apply the gsm8k dataset-id rewrite only in production (when lm_eval
-                # is the real evaluator); the datasets package is not installed in the
-                # torch-free dev environment.
-                if task.id == "gsm8k" and self._evaluate_fn is None:
+                # Always rewrite the gsm8k dataset id (datasets>=4 rejects the bare
+                # "gsm8k" id with HfUriError).  Pass self._datasets_module so tests
+                # can inject a fake module instead of importing real datasets.
+                if task.id == "gsm8k":
                     from qquant.eval.datasets import apply_dataset_overrides
 
-                    apply_dataset_overrides()
+                    apply_dataset_overrides(self._datasets_module)
                 written.extend(self._eval_task(variant, task, miss, run, loaded))
         finally:
             loaded.unload()
@@ -264,10 +268,10 @@ class EvalRunner:
             import langdetect
 
             langdetect.DetectorFactory.seed = 0
-        if task.id == "gsm8k" and self._evaluate_fn is None:
+        if task.id == "gsm8k":
             from qquant.eval.datasets import apply_dataset_overrides
 
-            apply_dataset_overrides()
+            apply_dataset_overrides(self._datasets_module)
         cells = expand_matrix([variant], [task])
         loaded = self._load()(variant.id)
         try:
