@@ -75,6 +75,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pj.add_argument("--variant", action="append", default=[], dest="variants")
     pj.add_argument("--max-length", type=int, default=None)
+    pj.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="cap total JudgeBench pairs (taken evenly across splits) to bound cost",
+    )
 
     pr = sub.add_parser("profile", help="EXT-4 efficiency profile of one ext variant")
     pr.add_argument("--variant", required=True)
@@ -142,6 +148,7 @@ def _cmd_judge(args) -> int:
             args.results,
             run,
             load_model=lambda vid: ext_load_variant(vid, variants=ext_variants),
+            limit=args.limit,
         )
     else:  # v1 core variants act as judges (the headline RQ)
         from qquant.models import load_variant
@@ -154,6 +161,7 @@ def _cmd_judge(args) -> int:
             args.results,
             run,
             load_model=lambda vid: load_variant(vid, variants=v1),
+            limit=args.limit,
         )
 
     failures: list[str] = []

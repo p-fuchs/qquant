@@ -51,6 +51,7 @@ class QLoRAConfig:
     lora_dropout: float = 0.05
     learning_rate: float = 2e-4
     num_epochs: float = 1.0
+    max_steps: int = -1  # >0 caps training steps (bounded runs); -1 = full epochs
     max_seq_length: int = 2048
     target_modules: tuple[str, ...] = (
         "q_proj",
@@ -166,8 +167,9 @@ def train_qlora(
     sft_cfg = SFTConfig(
         output_dir=str(adapter_dir / "_trainer"),
         num_train_epochs=cfg.num_epochs,
+        max_steps=cfg.max_steps,
         learning_rate=cfg.learning_rate,
-        max_seq_length=cfg.max_seq_length,
+        max_length=cfg.max_seq_length,  # trl>=1.x renamed max_seq_length -> max_length
         seed=cfg.seed,
         report_to=[],
     )
@@ -218,6 +220,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--epochs", type=float, default=1.0)
+    p.add_argument("--max-steps", type=int, default=-1)
     return p
 
 
@@ -228,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         lora_r=args.lora_r,
         num_epochs=args.epochs,
+        max_steps=args.max_steps,
     )
     # Fail fast on contamination BEFORE any GPU work.
     assert_corpus_disjoint(cfg.dataset_id)

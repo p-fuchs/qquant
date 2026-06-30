@@ -108,7 +108,7 @@ def quantize_variant(
 
     import torch
     from llmcompressor import oneshot
-    from transformers import AutoModelForCausalLM
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     print(f"[{variant_id}] loading base {base_model_id}@{base_revision[:12]}")
     model = AutoModelForCausalLM.from_pretrained(
@@ -125,6 +125,11 @@ def quantize_variant(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out_dir, save_compressed=True)
+    # Persist the tokenizer (incl. chat_template) alongside the checkpoint — the
+    # compressed-tensors eval loader reads the tokenizer from the checkpoint dir, and an
+    # instruct eval needs the chat_template (otherwise apply_chat_template fails).
+    tok = AutoTokenizer.from_pretrained(base_model_id, revision=base_revision)
+    tok.save_pretrained(out_dir)
     _print_observed_weight_args(variant_id, out_dir)
 
     write_manifest(

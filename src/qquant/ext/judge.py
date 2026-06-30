@@ -133,12 +133,14 @@ class JudgeRunner:
         load_model: Callable[[str], Any] | None = None,
         generate_fn: Callable[[Any, Any], GenerateFn] | None = None,
         dataset_fn: Callable[[ExtTask], list[JudgeItem]] | None = None,
+        limit: int | None = None,
     ):
         self.results_root = Path(results_root)
         self.run = run
         self._load_model = load_model
         self._generate_fn = generate_fn
         self._dataset_fn = dataset_fn
+        self._limit = limit
 
     # --- injectable defaults (box-only) --------------------------------------------
 
@@ -152,7 +154,7 @@ class JudgeRunner:
     def _dataset(self, task: ExtTask) -> list[JudgeItem]:
         if self._dataset_fn is not None:
             return self._dataset_fn(task)
-        return load_judgebench(task)
+        return load_judgebench(task, limit=self._limit)
 
     def _greedy_generate(self, loaded: Any, task: ExtTask) -> GenerateFn:
         """Return a prompt->text greedy generator over the loaded model (box-only)."""
@@ -167,11 +169,16 @@ class JudgeRunner:
         def _gen(prompt: str) -> str:
             messages = [{"role": "user", "content": prompt}]
             enc = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt"
-            ).to(device)
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_dict=True,
+            )
+            enc = {k: v.to(device) for k, v in enc.items()}
+            in_len = enc["input_ids"].shape[-1]
             with torch.no_grad():
-                out = model.generate(enc, max_new_tokens=max_new, do_sample=False)
-            return tokenizer.decode(out[0][enc.shape[-1] :], skip_special_tokens=True)
+                out = model.generate(**enc, max_new_tokens=max_new, do_sample=False)
+            return tokenizer.decode(out[0][in_len:], skip_special_tokens=True)
 
         return _gen
 
@@ -270,50 +277,58 @@ class JudgeRunner:
         return cell
 
 
-def load_judgebench(task: ExtTask) -> list[JudgeItem]:
+def load_judgebench(task: ExtTask, limit: int | None = None) -> list[JudgeItem]:
     """Load JudgeBench from HF into ``JudgeItem``s (box-only; lazy ``datasets`` import).
 
-    The exact dataset id, split, and field names are VERIFIED ON THE BOX at promotion
-    (catalog EXT-2). This maps the dataset's pairwise records into the project's
-    ``JudgeItem`` shape; adjust the field accessors once the real schema is confirmed.
+    Verified schema (``ScalerLab/JudgeBench``, 2026-06-30): one ``default`` config with
+    two splits ``claude`` (270) + ``gpt`` (350); fields ``pair_id`` / ``question`` /
+    ``response_A`` / ``response_B`` / ``label`` where ``label`` is ``"A>B"`` / ``"B>A"``
+    (the better response). Both splits are concatenated; ``limit`` caps the total (taken
+    evenly across splits) to bound cost on the unbatched runner.
     """
-    from datasets import load_dataset
+    from datasets import get_dataset_config_names, load_dataset
 
     dataset_id = task.hf_dataset_id
     if not dataset_id:
         raise ValueError("judgebench task has no hf_dataset_id set")
-    ds = load_dataset(dataset_id, split="train")
+    cfgs = get_dataset_config_names(dataset_id)
+    ds = load_dataset(dataset_id, cfgs[0] if cfgs else None)
+    splits = list(ds.keys())
+    per_split = None if limit is None else max(1, limit // len(splits))
+
     items: list[JudgeItem] = []
-    for i, row in enumerate(ds):
-        label = _normalize_label(row)
-        if label is None:  # skip ties / unlabelled
-            continue
-        items.append(
-            JudgeItem(
-                id=row.get("id", i),
-                question=row.get("question") or row.get("prompt") or "",
-                response_a=row.get("response_A")
-                or row.get("response_a")
-                or row.get("answer_A")
-                or "",
-                response_b=row.get("response_B")
-                or row.get("response_b")
-                or row.get("answer_B")
-                or "",
-                label=label,
+    for split in splits:
+        rows = ds[split]
+        n = len(rows) if per_split is None else min(per_split, len(rows))
+        for i in range(n):
+            row = rows[i]
+            label = _normalize_label(row)
+            if label is None:  # skip ties / unlabelled
+                continue
+            items.append(
+                JudgeItem(
+                    id=row.get("pair_id", f"{split}-{i}"),
+                    question=row.get("question") or "",
+                    response_a=row.get("response_A") or "",
+                    response_b=row.get("response_B") or "",
+                    label=label,
+                )
             )
-        )
     return items
 
 
 def _normalize_label(row: dict) -> str | None:
-    """Map a JudgeBench gold field to 'A'/'B'; None for tie/unknown (box-verify)."""
+    """Map a JudgeBench gold label to 'A'/'B'; None for tie/unknown.
+
+    JudgeBench uses ``"A>B"`` / ``"B>A"`` (the better response wins). Older A/B/0/1
+    encodings are still accepted defensively.
+    """
     raw = row.get("label") or row.get("winner") or row.get("gold")
     if raw is None:
         return None
-    s = str(raw).strip().upper()
-    if s in ("A", "RESPONSE_A", "0"):
+    s = str(raw).strip().upper().replace(" ", "")
+    if s in ("A>B", "A", "RESPONSE_A", "0"):
         return "A"
-    if s in ("B", "RESPONSE_B", "1"):
+    if s in ("B>A", "B", "RESPONSE_B", "1"):
         return "B"
-    return None
+    return None  # ties like "A=B"

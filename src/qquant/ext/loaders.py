@@ -74,17 +74,19 @@ def _apply_kv_cache(model: Any, kv_cache: dict[str, Any] | None) -> dict[str, An
     return kwargs
 
 
-def _attach_adapter(model: Any, adapter_path: Path) -> str:
-    """Attach a PEFT/LoRA adapter to a loaded base model; return a fingerprint.
+def _attach_adapter(model: Any, adapter_path: Path) -> tuple[Any, str]:
+    """Attach a PEFT/LoRA adapter to a loaded base model.
 
-    The adapter stays attached for eval — a 4-bit base cannot be cleanly LoRA-merged
-    (catalog EXT-5). The fingerprint is folded into provenance so a re-trained adapter
-    makes cells stale under ``is_cell_done``.
+    Returns ``(wrapped_model, fingerprint)`` — ``PeftModel.from_pretrained`` returns a
+    NEW module wrapping the base, so the caller MUST use the returned model (it does not
+    mutate in place). The adapter stays attached for eval — a 4-bit base cannot be
+    cleanly LoRA-merged (catalog EXT-5). The fingerprint is folded into provenance so a
+    re-trained adapter makes cells stale under ``is_cell_done``.
     """
     from peft import PeftModel
 
-    PeftModel.from_pretrained(model, str(adapter_path))
-    return _fingerprint_path(adapter_path)
+    wrapped = PeftModel.from_pretrained(model, str(adapter_path))
+    return wrapped, _fingerprint_path(adapter_path)
 
 
 def _fingerprint_path(path: str | Path) -> str:
@@ -140,7 +142,7 @@ def ext_load_variant(
     adapter_fingerprint = None
     if variant.adapter_path:
         adapter_dir = resolve_local_path(variant.adapter_path, checkpoints_root)
-        adapter_fingerprint = _attach_adapter(model, adapter_dir)
+        model, adapter_fingerprint = _attach_adapter(model, adapter_dir)
 
     force_greedy(model)
     kv_kwargs = _apply_kv_cache(model, variant.kv_cache)
