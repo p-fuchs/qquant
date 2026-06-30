@@ -21,8 +21,8 @@ class QuantManifest:
 
     variant_id: str  # "gptq-selfquant" | "awq-selfquant"
     algorithm: str  # "gptq" | "awq"  (the ONLY intentional difference)
-    scheme: str  # "W4A16_ASYM"
-    group_size: int  # 128
+    scheme: str  # "W4A16_ASYM" (W4A16 pair) | "W8A8" (EXT-3)
+    group_size: int | None  # 128 for W4A16; None for per-tensor W8A8 (EXT-3)
     base_model_id: str
     base_revision: str  # pinned baseline SHA
     calib_id: str  # "c4-128x2048-s42"
@@ -64,7 +64,7 @@ def selfquant_checkpoint_done(
     algorithm: str,
     base_revision: str,
     scheme: str,
-    group_size: int,
+    group_size: int | None,
     calib_sha256: str,
 ) -> bool:
     """True iff a valid compressed-tensors checkpoint is present (config.json has a

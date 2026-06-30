@@ -17,16 +17,31 @@ from selfquant.manifest import QuantManifest, selfquant_checkpoint_done, write_m
 from selfquant.recipes import (
     GROUP_SIZE,
     SCHEME,
+    SCHEME_W8A8,
     assert_schemes_match,
     awq_recipe,
     gptq_recipe,
+    smoothquant_w8a8_recipe,
 )
 
-SELF_QUANT_IDS = ("gptq-selfquant", "awq-selfquant")  # mirrors VARIANT_IDS, no aliases
+SELF_QUANT_IDS = ("gptq-selfquant", "awq-selfquant")  # the W4A16 fairness pair ("all")
+# EXT-3 (Spec 12): W8A8 is opt-in (`--id w8a8-selfquant`), NOT part of "all", so the v1
+# fairness-pair behaviour is unchanged. It is a different bit-width axis.
+EXT_SELF_QUANT_IDS = ("w8a8-selfquant",)
 BASE_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 BASE_REVISION = "a09a35458c702b33eeacc393d103063234e8bc28"  # decision-log baseline SHA
 
-_ALGORITHM = {"gptq-selfquant": "gptq", "awq-selfquant": "awq"}
+_ALGORITHM = {
+    "gptq-selfquant": "gptq",
+    "awq-selfquant": "awq",
+    "w8a8-selfquant": "smoothquant-w8a8",
+}
+# Per-variant scheme + group_size (W8A8 is not group-quantised → group_size None).
+_SCHEME = {
+    "gptq-selfquant": (SCHEME, GROUP_SIZE),
+    "awq-selfquant": (SCHEME, GROUP_SIZE),
+    "w8a8-selfquant": (SCHEME_W8A8, None),
+}
 _DEFAULT_CHECKPOINTS_ROOT = "checkpoints/self-quant"
 
 
@@ -51,7 +66,10 @@ def recipe_for(variant_id: str) -> list:
         return gptq_recipe()
     if variant_id == "awq-selfquant":
         return awq_recipe()
-    raise ValueError(f"unknown self-quant id {variant_id!r}; known: {SELF_QUANT_IDS}")
+    if variant_id == "w8a8-selfquant":
+        return smoothquant_w8a8_recipe()
+    known = (*SELF_QUANT_IDS, *EXT_SELF_QUANT_IDS)
+    raise ValueError(f"unknown self-quant id {variant_id!r}; known: {known}")
 
 
 def quantize_variant(
@@ -76,12 +94,13 @@ def quantize_variant(
 
     out_dir = Path(out_dir)
     algorithm = _ALGORITHM[variant_id]
+    scheme, group_size = _SCHEME[variant_id]
     if not force and selfquant_checkpoint_done(
         out_dir,
         algorithm=algorithm,
         base_revision=base_revision,
-        scheme=SCHEME,
-        group_size=GROUP_SIZE,
+        scheme=scheme,
+        group_size=group_size,
         calib_sha256=calib_sha256,
     ):
         print(f"[{variant_id}] up-to-date checkpoint at {out_dir} (skip)")
@@ -89,13 +108,13 @@ def quantize_variant(
 
     import torch
     from llmcompressor import oneshot
-    from transformers import AutoModelForCausalLM
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     print(f"[{variant_id}] loading base {base_model_id}@{base_revision[:12]}")
     model = AutoModelForCausalLM.from_pretrained(
         base_model_id, revision=base_revision, dtype="auto"
     )
-    print(f"[{variant_id}] oneshot ({algorithm}, {SCHEME}, g{GROUP_SIZE})")
+    print(f"[{variant_id}] oneshot ({algorithm}, {scheme}, g{group_size})")
     oneshot(
         model=model,
         dataset=calib_ds,
@@ -106,6 +125,11 @@ def quantize_variant(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out_dir, save_compressed=True)
+    # Persist the tokenizer (incl. chat_template) alongside the checkpoint — the
+    # compressed-tensors eval loader reads the tokenizer from the checkpoint dir, and an
+    # instruct eval needs the chat_template (otherwise apply_chat_template fails).
+    tok = AutoTokenizer.from_pretrained(base_model_id, revision=base_revision)
+    tok.save_pretrained(out_dir)
     _print_observed_weight_args(variant_id, out_dir)
 
     write_manifest(
@@ -113,8 +137,8 @@ def quantize_variant(
         QuantManifest(
             variant_id=variant_id,
             algorithm=algorithm,
-            scheme=SCHEME,
-            group_size=GROUP_SIZE,
+            scheme=scheme,
+            group_size=group_size,
             base_model_id=base_model_id,
             base_revision=base_revision,
             calib_id=calib_id,
@@ -136,7 +160,10 @@ def quantize_variant(
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="selfquant.quantize")
-    p.add_argument("--id", choices=[*SELF_QUANT_IDS, "all"], default="all")
+    # "all" = the W4A16 fairness pair only (v1 behaviour). EXT-3 W8A8 is opt-in by id.
+    p.add_argument(
+        "--id", choices=[*SELF_QUANT_IDS, *EXT_SELF_QUANT_IDS, "all"], default="all"
+    )
     p.add_argument("--checkpoints-root", default=_DEFAULT_CHECKPOINTS_ROOT)
     p.add_argument("--base-revision", default=BASE_REVISION)
     p.add_argument("--calib-only", action="store_true")

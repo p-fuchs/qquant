@@ -1,0 +1,114 @@
+# Extension variant registry (Spec 12) — SEPARATE from the v1 SSOT registry.
+# ids MUST match qquant.ext.registry.EXT_VARIANT_IDS. NONE of these are in
+# qquant.registry.VARIANT_IDS, and EVERY row is `enabled: false` — they are gated and
+# never join the v1 run. Flip a single row to `enabled: true` (and verify the box deps
+# per docs/specs/13-ext-runbook.md) to promote one extension at a time.
+#
+# Mistral base SHA + official checkpoint existence are CONTINGENT (catalog EXT-1); the
+# official rows stay disabled until a box smoke-test confirms a loadable checkpoint, with
+# the Mistral self-quants as the guaranteed 4-bit points (mirrors v1 awq-official).
+
+variants:
+  # ----- EXT-3: W8A8 / SmoothQuant (compressed-tensors; NOT in the W4A16 fairness pair) --
+  w8a8-selfquant:
+    quant_method: compressed-tensors
+    source: selfquant
+    enabled: false
+    model_id: "local:checkpoints/self-quant/w8a8-selfquant"
+    revision: null
+    notes: "EXT-3. SmoothQuant W8A8 from the SAME C4 calibration as the W4A16 self-quants. Speed runtime-confounded on the HF backend (sm_89); disk/memory fair. Separate bit-width axis."
+
+  # ----- EXT-5: QLoRA recovery on the frozen NF4 base --------------------------------
+  bnb-nf4-qlora:
+    quant_method: bnb-nf4          # base load path is reused; adapter attaches on top
+    source: recovery
+    enabled: false
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    adapter_path: "local:checkpoints/qlora/bnb-nf4-qlora"
+    notes: "EXT-5. LoRA adapter over the frozen NF4 base (canonical QLoRA). Train on GENERAL instruction data only — NEVER eval-task content (contamination guard). Adapter fingerprint folds into provenance."
+
+  # ----- EXT-1: Mistral-7B-Instruct as a 2nd base model (same 7 quant methods) --------
+  # base_model pins the Mistral base; the 7 ids name model-agnostic quant METHODS.
+  # Official GPTQ/AWQ rows are contingent (kept disabled until box-verified).
+  mistral-bf16:
+    quant_method: bf16
+    source: baseline
+    enabled: false
+    model_id: mistralai/Mistral-7B-Instruct-v0.3
+    revision: null                 # pin a verified SHA at promotion (box)
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Mistral BF16 baseline. Pin revision SHA on the box before running."
+
+  mistral-bnb-int8:
+    quant_method: bnb-int8
+    source: load-time
+    enabled: false
+    model_id: mistralai/Mistral-7B-Instruct-v0.3
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Mistral LLM.int8()."
+
+  mistral-bnb-nf4:
+    quant_method: bnb-nf4
+    source: load-time
+    enabled: false
+    model_id: mistralai/Mistral-7B-Instruct-v0.3
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Mistral NF4 + double-quant (bnb_4bit_compute_dtype=bfloat16)."
+
+  mistral-gptq-official:
+    quant_method: gptq
+    source: official
+    enabled: false                 # CONTINGENT on an official Mistral GPTQ checkpoint
+    model_id: "REPLACE_WITH_OFFICIAL_MISTRAL_GPTQ_REPO"
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Contingent: set model_id/revision to a verified official Mistral GPTQ repo, else keep disabled and rely on mistral-gptq-selfquant."
+
+  mistral-awq-official:
+    quant_method: awq
+    source: official
+    enabled: false                 # CONTINGENT on an official Mistral AWQ checkpoint
+    model_id: "REPLACE_WITH_OFFICIAL_MISTRAL_AWQ_REPO"
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Contingent: official Mistral AWQ; else mistral-awq-selfquant is the guaranteed AWQ point."
+
+  mistral-gptq-selfquant:
+    quant_method: compressed-tensors
+    source: selfquant
+    enabled: false
+    model_id: "local:checkpoints/self-quant/mistral-gptq-selfquant"
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Mistral GPTQ W4A16_ASYM via the SAME C4 protocol (re-run build_calibration through Mistral)."
+
+  mistral-awq-selfquant:
+    quant_method: compressed-tensors
+    source: selfquant
+    enabled: false
+    model_id: "local:checkpoints/self-quant/mistral-awq-selfquant"
+    revision: null
+    base_model: mistralai/Mistral-7B-Instruct-v0.3
+    notes: "EXT-1. Guaranteed Mistral AWQ point. AWQ W4A16_ASYM from the SAME C4 protocol."
+
+  # ----- EXT-4: quantized KV cache (paired ids; efficiency-first) ---------------------
+  bf16-kvq4:
+    quant_method: bf16
+    source: baseline
+    enabled: false
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    kv_cache: { backend: quanto, nbits: 4 }
+    notes: "EXT-4. BF16 weights + int4 quantized KV cache. Lossy cache => greedy output may differ from fp16-KV; that delta IS the measurement. Throughput gain runtime-confounded vs a vLLM kernel."
+
+  bnb-nf4-kvq4:
+    quant_method: bnb-nf4
+    source: load-time
+    enabled: false
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    revision: a09a35458c702b33eeacc393d103063234e8bc28
+    kv_cache: { backend: quanto, nbits: 4 }
+    notes: "EXT-4. NF4 weights + int4 KV cache: max VRAM headroom for long context / larger batch."
