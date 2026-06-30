@@ -15,7 +15,9 @@ def test_core_import_is_torch_free():
         "('qquant','qquant.cli','qquant.matrix','qquant.registry','qquant.paths',"
         "'qquant.config','qquant.eval.runner',"
         "'qquant.efficiency','qquant.efficiency.schema','qquant.efficiency.profiler',"
-        "'qquant.orchestrate.vastai','qquant.orchestrate.spike')];"
+        "'qquant.orchestrate.vastai','qquant.orchestrate.spike',"
+        "'qquant.ext.registry','qquant.ext.loaders','qquant.ext.judge',"
+        "'qquant.ext.kvcache','qquant.ext.cli')];"
         "bad=[m for m in sys.modules if m=='torch' or m.startswith('torch.')];"
         "sys.exit(1 if bad else 0)"
     )

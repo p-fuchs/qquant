@@ -14,6 +14,13 @@ GROUP_SIZE = 128
 SCHEME = "W4A16_ASYM"  # 4-bit weights, fp16 activations, ASYMMETRIC, per-group
 IGNORE = ["lm_head"]
 
+# EXT-3 (Spec 12): W8A8 SmoothQuant. A DIFFERENT bit-width axis — 8-bit weights AND
+# 8-bit activations — so it is reported ALONGSIDE, never INSIDE, the controlled W4A16
+# GPTQ-vs-AWQ fairness pair (assert_schemes_match only guards that pair). It reuses the
+# SAME C4 calibration object as the W4A16 self-quants for a fair calibration footing.
+SCHEME_W8A8 = "W8A8"
+SMOOTHING_STRENGTH = 0.5
+
 _EXPECTED_WEIGHT_ARGS = {
     "num_bits": 4,
     "symmetric": False,
@@ -40,6 +47,21 @@ def awq_recipe(group_size: int = GROUP_SIZE) -> list:
     return [
         AWQModifier(),
         QuantizationModifier(targets="Linear", scheme=SCHEME, ignore=list(IGNORE)),
+    ]
+
+
+def smoothquant_w8a8_recipe(smoothing_strength: float = SMOOTHING_STRENGTH) -> list:
+    """EXT-3 — SmoothQuant smoothing, then QuantizationModifier applies W8A8.
+
+    Verify the exact llm-compressor preset/modifier names on the box at promotion
+    (catalog EXT-3); this mirrors the AWQ recipe shape (smoother + quantizer).
+    """
+    from llmcompressor.modifiers.quantization import QuantizationModifier
+    from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
+
+    return [
+        SmoothQuantModifier(smoothing_strength=smoothing_strength),
+        QuantizationModifier(targets="Linear", scheme=SCHEME_W8A8, ignore=list(IGNORE)),
     ]
 
 

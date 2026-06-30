@@ -1,0 +1,23 @@
+# Extension task registry (Spec 12) — SEPARATE from the v1 SSOT task registry.
+# ids MUST match qquant.ext.registry.EXT_TASK_IDS. NOT in qquant.registry.TASK_IDS.
+tasks:
+  # ----- EXT-2: JudgeBench (LLM-as-judge meta-eval) ----------------------------------
+  # lm-eval ships no JudgeBench task, so this is driven by the custom qquant.ext.judge
+  # runner (runner: judge), NOT lm_eval.simple_evaluate. The variant judges pairs from
+  # JudgeBench against the gold (objective-correctness) label; metric = pairwise accuracy.
+  # Single-cell task (result.json). Verdicts run through the greedy-forced loader.
+  judgebench:
+    lm_eval_task: judgebench        # informational; the custom runner owns execution
+    primary_metric: accuracy
+    metric_keys: ["accuracy", "acc"]
+    per_subject: false
+    apply_chat_template: true
+    fewshot_as_multiturn: false
+    num_fewshot: 0
+    default_batch_size: 8
+    batch_overrides: {}
+    code_exec: false
+    max_gen_toks: 64                # verdict only (A/B + short rationale)
+    hf_dataset_id: "ScalerLab/JudgeBench"   # VERIFY exact id on the box at promotion
+    runner: judge
+    position_bias_control: true     # average both A/B orders; require consistency

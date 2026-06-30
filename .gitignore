@@ -21,6 +21,7 @@ id_ed25519
 
 # Experiment outputs (large; regenerated)
 results/
+results-ext/
 !tests/**/results/
 checkpoints/
 hf_cache/

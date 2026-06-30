@@ -26,6 +26,7 @@ qquant = "qquant.cli:main"
 qquant-spike = "qquant.orchestrate.spike:main"  # Spec 02
 qquant-eval = "qquant.eval.cli:main"  # Spec 05
 qquant-profile = "qquant.efficiency.cli:main"  # Spec 06
+qquant-ext = "qquant.ext.cli:main"  # Spec 12 extensions (gated; separate results-ext root)
 
 [build-system]
 requires = ["hatchling"]
@@ -53,6 +54,14 @@ gpu = [
     "accelerate==1.13.0 ; sys_platform == 'linux'",
     "compressed-tensors>=0.17.1 ; sys_platform == 'linux'",
     "lm-eval[hf,ifeval,math]==0.4.12 ; sys_platform == 'linux'",
+]
+# Spec 12 extensions — GATED, installed only when promoting an extension on the box
+# (`uv sync --group gpu --group ext`). Kept OUT of the `gpu` group so the v1 run's env is
+# byte-identical. Exact pins are resolved + verified on the box at promotion (decision-log
+# discipline); peft is the eval-side dep for the EXT-5 QLoRA adapter attach. The quant-env
+# training deps (trl, datasets) live in quant/pyproject.toml, added at EXT-5 promotion.
+ext = [
+    "peft ; sys_platform == 'linux'",
 ]
 
 [tool.uv]
