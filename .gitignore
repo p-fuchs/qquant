@@ -34,3 +34,13 @@ hf_cache/
 .idea/
 .vscode/
 .serena/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.out
+*.synctex.gz
