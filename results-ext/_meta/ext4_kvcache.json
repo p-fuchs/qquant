@@ -1,0 +1,5 @@
+{"experiment":"EXT-4 quantized KV cache","context_tokens":3072,"new_tokens":256,"backend":"quanto","nbits":4,
+ "comparison":[
+  {"tag":"bf16 (fp16 KV)","weights_gb":15.232,"generate_peak_gb":15.862,"kv_plus_act_gb":0.63,"decode_tok_per_s":31.3,"cache_cfg":null},
+  {"tag":"bf16-kvq4 (int4 KV)","weights_gb":15.24,"generate_peak_gb":15.732,"kv_plus_act_gb":0.493,"decode_tok_per_s":1.52,"cache_cfg":{"backend":"quanto","nbits":4}}],
+ "finding":"int4 KV cache cuts KV+activation transient ~22% (0.63->0.49GB at 3k ctx) but slows decode ~20x (31.3->1.52 tok/s) on the HF/quanto path; memory-for-speed tradeoff, throughput runtime-confounded vs vLLM kernel."}
