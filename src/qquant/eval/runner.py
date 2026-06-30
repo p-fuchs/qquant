@@ -169,9 +169,9 @@ class EvalRunner:
                     from qquant.eval.datasets import apply_dataset_overrides
 
                     apply_dataset_overrides(self._datasets_module)
-                # Isolate per-task failures: one task missing/erroring in the installed
-                # lm_eval (e.g. humaneval absent from a pinned commit) must not abort the
-                # remaining tasks for this variant.
+                # Isolate per-task failures: one task missing/erroring in the
+                # installed lm_eval (e.g. humaneval absent from a pinned commit) must
+                # not abort the remaining tasks for this variant.
                 try:
                     written.extend(self._eval_task(variant, task, miss, run, loaded))
                 except Exception as exc:  # noqa: BLE001

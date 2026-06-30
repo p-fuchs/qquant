@@ -56,4 +56,5 @@ def test_simple_evaluate_kwargs_sets_confirm_unsafe_for_code_exec():
     )
     assert kw["confirm_run_unsafe_code"] is True
     assert kw["num_fewshot"] == 0
-    assert kw["batch_size"] == 4
+    # generative batch raised 4->16 on the box run (~2x faster, greedy-invariant)
+    assert kw["batch_size"] == 16
