@@ -24,7 +24,7 @@ tasks:
     apply_chat_template: true
     fewshot_as_multiturn: true
     num_fewshot: 5
-    default_batch_size: 4
+    default_batch_size: 16       # generative: decode is bandwidth-bound; batch ~invariant for greedy
     batch_overrides: {}
     code_exec: false
     max_gen_toks: 512
@@ -37,7 +37,7 @@ tasks:
     apply_chat_template: true
     fewshot_as_multiturn: false
     num_fewshot: 0
-    default_batch_size: 4
+    default_batch_size: 16             # generative: decode is bandwidth-bound; batch ~invariant for greedy
     batch_overrides: {}
     code_exec: true                    # needs HF_ALLOW_CODE_EVAL=1 + QQUANT_ALLOW_CODE_EXEC=1
     max_gen_toks: 1024
@@ -50,7 +50,7 @@ tasks:
     apply_chat_template: true
     fewshot_as_multiturn: false
     num_fewshot: 0
-    default_batch_size: 4
+    default_batch_size: 16             # generative: decode is bandwidth-bound; batch ~invariant for greedy
     batch_overrides: {}
     code_exec: false                   # needs langdetect seed + nltk punkt data (bootstrap)
     max_gen_toks: 1280

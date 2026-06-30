@@ -1,0 +1,7 @@
+{
+  "acc": 0.7218344965104686,
+  "acc_stderr": 0.003781429146778451,
+  "lm_eval_version": "0.4.3",
+  "n_subjects": 57,
+  "variant": "awq-official"
+}

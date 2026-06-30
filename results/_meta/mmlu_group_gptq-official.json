@@ -1,0 +1,7 @@
+{
+  "acc": 0.7209799173906851,
+  "acc_stderr": 0.0037849908244583456,
+  "lm_eval_version": "0.4.3",
+  "n_subjects": 57,
+  "variant": "gptq-official"
+}

@@ -1,0 +1,89 @@
+{
+  "config": {
+    "batch_gen_tokens": 64,
+    "batch_seq_len": 2048,
+    "cuda_version": "12.6",
+    "decode_tokens": 256,
+    "device": "cuda:0",
+    "do_sample": false,
+    "dtype": "bfloat16",
+    "expandable_segments": false,
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "prompt_buckets": {
+      "long": 4096,
+      "medium": 1024,
+      "short": 128
+    },
+    "repeats": 5,
+    "torch_version": "2.12.1+cu126",
+    "transformers_version": "5.10.1",
+    "warmup": 2
+  },
+  "confounded_metrics": [],
+  "disk": {
+    "path": "/workspace/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28",
+    "snapshot_bytes": 15242788168,
+    "source": "hf-cache",
+    "weights_bytes": 15231271888,
+    "weights_gib": 14.19
+  },
+  "max_batch_size": {
+    "ceiling": 64,
+    "gen_tokens": 64,
+    "ladder": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "oom_at": 32,
+    "seq_len": 2048,
+    "value": 16
+  },
+  "memory": {
+    "generate_peak_bytes": 16060921856,
+    "generate_peak_reserved_bytes": 16231956480,
+    "load_peak_bytes": 15232282624,
+    "load_peak_reserved_bytes": 15233712128,
+    "weights_resident_bytes": 15232282624
+  },
+  "meta": {
+    "hostname": "30f09472a4a4",
+    "timestamp": "2026-06-30T06:57:02.610182+00:00"
+  },
+  "model_id": "Qwen/Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "quant_method": "bf16",
+  "schema_version": 1,
+  "source": "baseline",
+  "speed_label": "comparable",
+  "throughput": {
+    "long": {
+      "decode_tok_s": 36.96376625643052,
+      "e2e_latency_s": 7.329594523180276,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9504.652325977886,
+      "prompt_tokens": 4096,
+      "ttft_s": 0.43094685208052397
+    },
+    "medium": {
+      "decode_tok_s": 37.04502004194935,
+      "e2e_latency_s": 6.986897892085835,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9905.053389945588,
+      "prompt_tokens": 1024,
+      "ttft_s": 0.10338157298974693
+    },
+    "short": {
+      "decode_tok_s": 36.955199086204416,
+      "e2e_latency_s": 6.931159074883908,
+      "gen_tokens": 256,
+      "prefill_tok_s": 4140.770813851141,
+      "prompt_tokens": 128,
+      "ttft_s": 0.030912118963897228
+    }
+  },
+  "variant": "bf16"
+}

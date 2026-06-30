@@ -1,0 +1,90 @@
+{
+  "config": {
+    "batch_gen_tokens": 64,
+    "batch_seq_len": 2048,
+    "cuda_version": "12.6",
+    "decode_tokens": 256,
+    "device": "cuda:0",
+    "do_sample": false,
+    "dtype": "auto",
+    "expandable_segments": false,
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "model_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "prompt_buckets": {
+      "long": 4096,
+      "medium": 1024,
+      "short": 128
+    },
+    "repeats": 5,
+    "torch_version": "2.12.1+cu126",
+    "transformers_version": "5.10.1",
+    "warmup": 2
+  },
+  "confounded_metrics": [],
+  "disk": {
+    "path": "/workspace/hf/hub/models--Qwen--Qwen2.5-7B-Instruct-AWQ/snapshots/b25037543e9394b818fdfca67ab2a00ecc7dd641",
+    "snapshot_bytes": 5582381128,
+    "source": "hf-cache",
+    "weights_bytes": 5570829760,
+    "weights_gib": 5.19
+  },
+  "max_batch_size": {
+    "ceiling": 64,
+    "gen_tokens": 64,
+    "ladder": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "oom_at": 64,
+    "seq_len": 2048,
+    "value": 32
+  },
+  "memory": {
+    "generate_peak_bytes": 6400184320,
+    "generate_peak_reserved_bytes": 6585057280,
+    "load_peak_bytes": 5604796416,
+    "load_peak_reserved_bytes": 5666504704,
+    "weights_resident_bytes": 5570848768
+  },
+  "meta": {
+    "hostname": "30f09472a4a4",
+    "timestamp": "2026-06-30T07:24:44.742315+00:00"
+  },
+  "model_id": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "model_revision": "b25037543e9394b818fdfca67ab2a00ecc7dd641",
+  "quant_method": "awq",
+  "schema_version": 1,
+  "source": "official",
+  "speed_label": "comparable",
+  "throughput": {
+    "long": {
+      "decode_tok_s": 27.86637988030651,
+      "e2e_latency_s": 9.576813902938738,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9614.977766050504,
+      "prompt_tokens": 4096,
+      "ttft_s": 0.42600202513858676
+    },
+    "medium": {
+      "decode_tok_s": 27.818381202449263,
+      "e2e_latency_s": 9.2714919608552,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9762.515842148163,
+      "prompt_tokens": 1024,
+      "ttft_s": 0.10489099496044219
+    },
+    "short": {
+      "decode_tok_s": 27.965939353481303,
+      "e2e_latency_s": 9.157037816010416,
+      "gen_tokens": 256,
+      "prefill_tok_s": 3298.7083162164336,
+      "prompt_tokens": 128,
+      "ttft_s": 0.038803067058324814
+    }
+  },
+  "variant": "awq-official"
+}

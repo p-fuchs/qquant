@@ -1,0 +1,90 @@
+{
+  "config": {
+    "batch_gen_tokens": 64,
+    "batch_seq_len": 2048,
+    "cuda_version": "12.6",
+    "decode_tokens": 256,
+    "device": "cuda:0",
+    "do_sample": false,
+    "dtype": "auto",
+    "expandable_segments": false,
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "model_revision": "e9c932ac1893a49ae0fc497ad6e1e86e2e39af20",
+    "prompt_buckets": {
+      "long": 4096,
+      "medium": 1024,
+      "short": 128
+    },
+    "repeats": 5,
+    "torch_version": "2.12.1+cu126",
+    "transformers_version": "5.10.1",
+    "warmup": 2
+  },
+  "confounded_metrics": [],
+  "disk": {
+    "path": "/workspace/hf/hub/models--Qwen--Qwen2.5-7B-Instruct-GPTQ-Int4/snapshots/e9c932ac1893a49ae0fc497ad6e1e86e2e39af20",
+    "snapshot_bytes": 5586945706,
+    "source": "hf-cache",
+    "weights_bytes": 5575381144,
+    "weights_gib": 5.19
+  },
+  "max_batch_size": {
+    "ceiling": 64,
+    "gen_tokens": 64,
+    "ladder": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "oom_at": 64,
+    "seq_len": 2048,
+    "value": 32
+  },
+  "memory": {
+    "generate_peak_bytes": 6374596608,
+    "generate_peak_reserved_bytes": 6587154432,
+    "load_peak_bytes": 5608715776,
+    "load_peak_reserved_bytes": 5672796160,
+    "weights_resident_bytes": 5545728000
+  },
+  "meta": {
+    "hostname": "30f09472a4a4",
+    "timestamp": "2026-06-30T07:20:48.743981+00:00"
+  },
+  "model_id": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+  "model_revision": "e9c932ac1893a49ae0fc497ad6e1e86e2e39af20",
+  "quant_method": "gptq",
+  "schema_version": 1,
+  "source": "official",
+  "speed_label": "comparable",
+  "throughput": {
+    "long": {
+      "decode_tok_s": 28.5471279443306,
+      "e2e_latency_s": 9.354905311018229,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9699.083543837067,
+      "prompt_tokens": 4096,
+      "ttft_s": 0.42230794089846313
+    },
+    "medium": {
+      "decode_tok_s": 28.73258157954942,
+      "e2e_latency_s": 8.97906018095091,
+      "gen_tokens": 256,
+      "prefill_tok_s": 9834.994160201893,
+      "prompt_tokens": 1024,
+      "ttft_s": 0.10411800793372095
+    },
+    "short": {
+      "decode_tok_s": 28.343643560117364,
+      "e2e_latency_s": 9.034640127094463,
+      "gen_tokens": 256,
+      "prefill_tok_s": 3376.0661547951504,
+      "prompt_tokens": 128,
+      "ttft_s": 0.03791394899599254
+    }
+  },
+  "variant": "gptq-official"
+}

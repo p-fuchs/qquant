@@ -1,0 +1,7 @@
+{
+  "acc": 0.7337273892607891,
+  "acc_stderr": 0.0037300626772895826,
+  "lm_eval_version": "0.4.3",
+  "n_subjects": 57,
+  "variant": "bnb-int8"
+}

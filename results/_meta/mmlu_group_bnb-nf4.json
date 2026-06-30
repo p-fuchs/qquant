@@ -1,0 +1,7 @@
+{
+  "acc": 0.7261786070360348,
+  "acc_stderr": 0.0037630581431530945,
+  "lm_eval_version": "0.4.3",
+  "n_subjects": 57,
+  "variant": "bnb-nf4"
+}

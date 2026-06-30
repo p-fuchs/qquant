@@ -1,0 +1,42 @@
+{
+  "awq_official_loads": true,
+  "checks": {
+    "awq_official_loads": true,
+    "bnb_loads": true,
+    "chat_template_renders": true,
+    "generate_until_ok": true,
+    "gptq_loads": true,
+    "mmlu_subjects_match": true,
+    "mmlu_subtask_scored": true,
+    "nvcc_matches_torch": true
+  },
+  "lm_eval_ref": "c6491878fb0a9d627dff50336c98bbf39e3b56e4",
+  "lm_eval_version": "",
+  "notes": [],
+  "nvcc_cuda": "12.6",
+  "raw": {
+    "awq_official_loads": true,
+    "checks": {
+      "awq_official_loads": true,
+      "bnb_loads": true,
+      "chat_template_renders": true,
+      "generate_until_ok": true,
+      "gptq_loads": true,
+      "mmlu_subjects_match": true,
+      "mmlu_subtask_scored": true,
+      "nvcc_matches_torch": true
+    },
+    "lm_eval_ref": "c6491878fb0a9d627dff50336c98bbf39e3b56e4",
+    "lm_eval_version": "",
+    "notes": [],
+    "nvcc_cuda": "12.6",
+    "torch_cuda": "12.6",
+    "torch_version": "2.12.1+cu126",
+    "transformers_version": "5.10.1",
+    "verdict": "GO"
+  },
+  "torch_cuda": "12.6",
+  "torch_version": "2.12.1+cu126",
+  "transformers_version": "5.10.1",
+  "verdict": "GO"
+}

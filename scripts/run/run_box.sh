@@ -28,11 +28,26 @@ export HF_ALLOW_CODE_EVAL=1
 export QQUANT_ALLOW_CODE_EXEC=1
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_DISABLE_TELEMETRY=1
+# All benchmark datasets (mmlu/gsm8k/ifeval) are cached after the first variant; force
+# cache-only dataset loads so an HF Hub rate-limit can't trigger the datasets>=5
+# trust_remote_code/loading-script fallback that silently drops MMLU for a variant.
+# (Models still download online — this only affects the datasets library.)
+export HF_DATASETS_OFFLINE=1
 
 VARIANTS=(bf16 bnb-int8 bnb-nf4 gptq-official awq-official)
 LOGDIR=/workspace/logs
 mkdir -p "$LOGDIR" "$RESULTS"
 cd "$REPO"
+
+# Singleton guard: refuse to start if a previous run_box is still alive (prevents the
+# concurrent-variant GPU contention that two racing instances cause).
+LOCK=/workspace/run_box.lock
+if [ -e "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "run_box already running (pid $(cat "$LOCK")); abort." >&2
+  exit 1
+fi
+echo $$ >"$LOCK"
+trap 'rm -f "$LOCK"' EXIT
 
 echo "===== EFFICIENCY PROFILE (per variant, resumable) — $(date -u +%H:%M:%S) ====="
 for v in "${VARIANTS[@]}"; do

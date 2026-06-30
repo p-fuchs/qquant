@@ -205,6 +205,10 @@ class TorchEngine:
     def load_and_measure(self, load_model: Any, variant: Any, cfg: ProfileConfig):
         import torch
 
+        # Initialize the CUDA context first: on a fresh process, reset_peak_memory_stats
+        # as the very first CUDA call raises "Invalid device argument" (the device's
+        # context/stats tracking isn't set up until CUDA is initialized).
+        torch.cuda.init()
         torch.cuda.reset_peak_memory_stats(cfg.device)
         loaded = load_model(variant.id, device_map={"": int(cfg.device.split(":")[-1])})
         mem = {

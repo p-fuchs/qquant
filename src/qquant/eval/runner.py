@@ -70,9 +70,32 @@ class EvalRunner:
     def _evaluate(self):
         if self._evaluate_fn is not None:
             return self._evaluate_fn
+        import inspect
+        import sys
+
         import lm_eval
 
-        return lm_eval.simple_evaluate
+        fn = lm_eval.simple_evaluate
+        try:
+            params = inspect.signature(fn).parameters
+        except (TypeError, ValueError):
+            return fn
+        if any(p.kind == p.VAR_KEYWORD for p in params.values()):
+            return fn
+
+        def _filtered(**kwargs):
+            # The pinned lm_eval commit may predate some kwargs (e.g.
+            # confirm_run_unsafe_code, added in 0.4.4+). Drop what the installed
+            # simple_evaluate can't accept; code-exec stays gated by HF_ALLOW_CODE_EVAL.
+            dropped = sorted(k for k in kwargs if k not in params)
+            if dropped:
+                print(
+                    f"[runner] lm_eval.simple_evaluate lacks {dropped}; dropping",
+                    file=sys.stderr,
+                )
+            return fn(**{k: v for k, v in kwargs.items() if k in params})
+
+        return _filtered
 
     def _run_for(self, variant: Variant) -> RunConfig:
         """Per-variant provenance: model_revision = pinned SHA (None for self-quant)."""
@@ -146,7 +169,18 @@ class EvalRunner:
                     from qquant.eval.datasets import apply_dataset_overrides
 
                     apply_dataset_overrides(self._datasets_module)
-                written.extend(self._eval_task(variant, task, miss, run, loaded))
+                # Isolate per-task failures: one task missing/erroring in the installed
+                # lm_eval (e.g. humaneval absent from a pinned commit) must not abort the
+                # remaining tasks for this variant.
+                try:
+                    written.extend(self._eval_task(variant, task, miss, run, loaded))
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "task %s/%s failed (%r); continuing with remaining tasks",
+                        variant.id,
+                        task.id,
+                        exc,
+                    )
         finally:
             loaded.unload()
         return written
