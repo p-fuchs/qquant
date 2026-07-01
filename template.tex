@@ -44,7 +44,7 @@ We measure these trade-offs for one 7B-class instruction model,
 Qwen2.5-7B-Instruct. Against a bf16 baseline we compare 8-bit and 4-bit
 post-training quantization (LLM.int8(), NF4, and official GPTQ and AWQ) on
 capability benchmarks (MMLU, GSM8K, HumanEval, IFEval) and a set of efficiency
-measurements on a single RTX~4090. The 4-bit GPTQ and AWQ checkpoints give the best
+measurements on a single GPU. The 4-bit GPTQ and AWQ checkpoints give the best
 overall trade-off: they are the only variants that cut both disk and GPU memory
 while staying close to baseline speed, at a modest quality cost. Two results run
 against intuition: LLM.int8() is the slowest variant of all and saves no disk, and
@@ -102,7 +102,7 @@ a weighting over its 57 subjects), GSM8K \citep{gsm8k} (exact-match under flexib
 extraction, since the strict-match number is a formatting artefact for instruct
 models), HumanEval \citep{humaneval} (pass@1, with code execution), and IFEval
 \citep{ifeval} (prompt-level strict accuracy). Decoding is greedy and
-deterministic, with \texttt{do\_sample=False} set at both load and generation.
+deterministic.
 MMLU and GSM8K use the chat template with 5-shot multi-turn prompting; HumanEval
 and IFEval are 0-shot. Efficiency is profiled separately (\S\ref{sec:eff}): the
 model is loaded once, then we measure disk size, load and generate peak VRAM,
@@ -231,7 +231,8 @@ AWQ shrink both.}
 
 Figure~\ref{fig:tradeoff} places all variants in the quality--speed--memory space,
 and the Pareto picture is clear. bf16 buys top speed at the highest memory;
-bnb-int8 is dominated, being both slow and disk-heavy; bnb-nf4 trades speed for
+bnb-int8 is dominated --- bnb-nf4 matches its quality (their gap is within one
+standard error) while decoding faster and using less memory; bnb-nf4 trades speed for
 memory; and GPTQ and AWQ sit at the sweet spot, with roughly half the memory, the
 largest batch, and decode within about 25\% of baseline (a modest slowdown, versus
 2--5$\times$ for the other methods) for a small quality cost. Under
@@ -243,7 +244,7 @@ base weights, and LLM.int8() is hard to recommend on this hardware.
 \centering
 \includegraphics[width=0.74\linewidth]{fig_tradeoff.pdf}
 \caption{Quality--speed--memory trade-off. Up and to the right is better (higher
-MMLU, faster decode); smaller markers use less generate VRAM. GPTQ and AWQ occupy
+mean quality, faster decode); smaller markers use less generate VRAM. GPTQ and AWQ occupy
 the high-speed, low-memory corner, and bnb-int8 is Pareto-dominated.}
 \label{fig:tradeoff}
 \end{figure}

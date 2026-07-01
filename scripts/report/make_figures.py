@@ -101,16 +101,17 @@ def main():
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6.4, 3.6))
+    meanq = {v: sum(M[v][b] for b in benches) / 4 * 100 for v in V}
     for i, v in enumerate(V):
-        ax.scatter(M[v]["decode_long"], M[v]["mmlu"] * 100,
+        ax.scatter(M[v]["decode_long"], meanq[v],
                    s=M[v]["generate_peak_gib"] * 60, color=CLR[i],
                    edgecolor="k", lw=0.6, alpha=0.85, zorder=3)
-        ax.annotate(LBL[i], (M[v]["decode_long"], M[v]["mmlu"] * 100),
+        ax.annotate(LBL[i], (M[v]["decode_long"], meanq[v]),
                     xytext=(6, 6), textcoords="offset points", fontsize=9)
     ax.set_xlabel("Decode throughput (tok/s)  $\\rightarrow$ faster")
-    ax.set_ylabel("MMLU accuracy (%)")
+    ax.set_ylabel("Mean quality (%)")
     ax.set_title("Quality–speed–memory trade-off (marker area $\\propto$ generate VRAM)")
-    ax.set_ylim(71.5, 74.2)
+    ax.set_ylim(76.2, 79.0)
     fig.savefig(f"{FIG}/fig_tradeoff.pdf")
     plt.close(fig)
 
