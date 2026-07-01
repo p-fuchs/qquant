@@ -122,8 +122,7 @@ Variant & Method & Precision & Source \\
 \texttt{awq-official}  & AWQ \citep{awq}                          & W4 (g128)       & official Qwen ckpt \\
 \bottomrule
 \end{tabular}
-\caption{The five core variants. Load-time means the disk checkpoint is the full
-bf16 model, quantized in memory during loading.}
+\caption{The five core variants.}
 \label{tab:variants}
 \end{table}
 
@@ -137,9 +136,9 @@ at 7B: every 4-bit variant stays within about 1.5 points of the bf16 baseline on
 MMLU and GSM8K. Sensitivity is uneven across capabilities, which answers RQ2.
 
 Knowledge and math are close to lossless: MMLU and GSM8K barely move, and 8-bit is
-essentially unchanged. The MMLU shifts are small but, at a $\pm$0.4 standard error,
-resolvable; most other deltas are within roughly one standard error and should be
-read as trends rather than firm rankings. Coding shows the widest spread, with
+essentially unchanged. The MMLU drops are small but real: its standard error is tight ($\pm$0.4), so the
+4-bit variants sit measurably below bf16. On the other benchmarks the gaps are about
+the size of the standard error, so read those orderings as trends, not firm rankings. Coding shows the widest spread, with
 bnb-int8 losing about four points on HumanEval, the single largest drop; the 4-bit
 methods give up a point or two, though at HumanEval's $\pm$3-point standard error
 only the bnb-int8 gap approaches significance. Instruction following degrades only
@@ -163,9 +162,8 @@ Variant & MMLU & GSM8K & HumanEval & IFEval & Mean \\
 \texttt{awq-official}  & 72.2\,$\pm$0.4 & 84.3\,$\pm$1.0 & 81.1\,$\pm$3.1 & 69.9\,$\pm$2.0 & 76.9 \\
 \bottomrule
 \end{tabular}
-\caption{Quality (\%), with standard error ($\pm$) shown per benchmark. MMLU is
-weighted over 57 subjects; GSM8K uses flexible-extract exact-match. Mean is a plain
-average across the four benchmarks (no standard error). Best per column in bold.}
+\caption{Quality (\%), with standard error ($\pm$) shown per benchmark. Mean is a
+plain average across the four benchmarks (no standard error). Best per column in bold.}
 \label{tab:quality}
 \end{table}
 
@@ -192,7 +190,7 @@ generate VRAM sharply and doubles the maximum batch, but still decodes below bf1
 GPTQ and AWQ are the only variants that improve memory without paying much in
 speed. They cut disk by about 2.7 times, roughly halve generate VRAM, double the
 maximum batch, and hold decode to within about a quarter of baseline (28--29 vs.\
-37\,tok/s) --- a modest slowdown next to the 2--5$\times$ of the other quantized
+37\,tok/s), a modest slowdown next to the 2--5$\times$ of the other quantized
 variants. Prefill is unaffected across all variants, because quantization touches
 the memory-bound decode phase rather than the compute-bound prefill.
 
@@ -210,7 +208,7 @@ Variant & Disk & Gen.\ VRAM & Max & Decode & Prefill \\
 \texttt{awq-official}  & \textbf{5.19} & 5.96 & \textbf{32} & 27.9 & 9615 \\
 \bottomrule
 \end{tabular}
-\caption{Efficiency on one RTX~4090. Disk is the on-disk weight bytes; max batch is
+\caption{Efficiency. Disk is the on-disk weight bytes; max batch is
 the largest power-of-two before OOM at 2048-token sequences; decode and prefill are
 at the 4096-token (long) bucket. Per-bucket throughput is in the appendix
 (Table~\ref{tab:eff-full}).}
@@ -231,11 +229,9 @@ AWQ shrink both.}
 
 Figure~\ref{fig:tradeoff} places all variants in the quality--speed--memory space,
 and the Pareto picture is clear. bf16 buys top speed at the highest memory;
-bnb-int8 is dominated --- bnb-nf4 matches its quality (their gap is within one
-standard error) while decoding faster and using less memory; bnb-nf4 trades speed for
-memory; and GPTQ and AWQ sit at the sweet spot, with roughly half the memory, the
-largest batch, and decode within about 25\% of baseline (a modest slowdown, versus
-2--5$\times$ for the other methods) for a small quality cost. Under
+bnb-int8 is dominated, slower and more memory-hungry with no compensating quality
+gain; bnb-nf4 trades speed for memory; and GPTQ and AWQ sit at the sweet spot: the best
+quality--memory--speed balance, for a small quality cost. Under
 limited VRAM we recommend an official GPTQ or AWQ checkpoint. NF4 is
 the best fallback when no pre-quantized checkpoint exists, since it needs only the
 base weights, and LLM.int8() is hard to recommend on this hardware.
@@ -251,10 +247,10 @@ the high-speed, low-memory corner, and bnb-int8 is Pareto-dominated.}
 
 \section{Extensions}
 
-We implemented all five catalogued extensions as a gated, separate code layer
-(\texttt{qquant.ext}) that reuses the core harness without touching it, and ran the
-four that fit the GPU budget; adding Mistral-7B as a second model was skipped
-because it would re-spend the entire compute budget.
+Beyond the core study, we considered five optional extensions: JudgeBench,
+W8A8/SmoothQuant, a quantized KV cache, QLoRA recovery, and a second-model run.
+We ran the four that fit the GPU budget; adding Mistral-7B as a second model was
+skipped because it would have repeated the full compute campaign.
 
 \paragraph{EXT-2: JudgeBench.} We evaluate each variant as a pairwise judge on
 JudgeBench \citep{judgebench}, a set of objective-correctness pairs, scoring
@@ -315,21 +311,23 @@ memory transient but roughly 20 times slower decode.}
 
 \section{Conclusion}
 
-For a 7B-class instruction model on a single RTX~4090, 4-bit GPTQ and AWQ are the
-best default under limited VRAM: they cut disk and generate VRAM by more than half,
-double the feasible batch size, and keep decode near baseline, all for a small
-quality cost (RQ1). Capability degradation is uneven, with
-coding the most sensitive and knowledge and math the least (RQ2). Most importantly,
-quantization is a memory technique rather than a speed one (RQ3): LLM.int8() is
-about five times slower than bf16 and saves no disk, NF4 saves memory while still
-decoding below baseline, and only the calibrated 4-bit kernels of GPTQ and AWQ
-deliver memory savings for only a modest (\textasciitilde20--25\%) decode slowdown. The extensions reinforce this: W8A8
-and the int4 KV cache both work yet are runtime-confounded on the HF backend, and
-quantization does not degrade judging in this small-sample test. The main limitations are single-seed
-evaluation and the runtime confound on the self-quant and KV paths, which a
-fused-kernel serving stack such as vLLM would resolve; multi-seed runs, the second
-model (Mistral-7B \citep{mistral7b}), and a full QLoRA recovery measurement (RQ4)
-are the natural next steps.
+The main lesson is that quantization should be chosen for memory relief, not assumed
+speedup. On this hardware, the official GPTQ and AWQ checkpoints are the strongest
+default under limited VRAM because they preserve most quality while reducing both
+disk and generation memory. The bitsandbytes variants are useful in narrower cases:
+NF4 is a practical fallback when no pre-quantized checkpoint exists, while
+LLM.int8() is difficult to justify here because its runtime cost outweighs its
+accuracy advantage.
+
+The capability results also argue against treating quantization error as uniform:
+knowledge and math were nearly stable, while coding was the most sensitive
+benchmark. The extensions reinforce the same deployment lesson. JudgeBench did not
+expose a quality failure from quantization, but W8A8 and int4 KV-cache experiments
+showed that backend support matters as much as bit-width. Our main limitations are
+the single-model, single-seed evaluation and the HF-runtime confounds for
+self-quantization and KV-cache paths; multi-seed runs, the second model
+(Mistral-7B \citep{mistral7b}), fused-kernel serving tests, and a full QLoRA
+recovery measurement (RQ4) are the natural next steps.
 
 \section*{LLM Usage}
 In line with the course policy, we document our use of AI tools. The research
@@ -379,11 +377,8 @@ JSONs.}
 \label{tab:eff-full}
 \end{table}
 
-\paragraph{Extension artifacts.} EXT-2 produced one JudgeBench cell per variant
-(n=200 pairs, position-bias controlled). EXT-3 produced an 8.7\,GiB W8A8
-compressed-tensors checkpoint (per-channel int8 weights, int8 activations) from the
-shared C4 calibration set. EXT-4 measured the int4 quantized KV cache at a
-3072-token context. EXT-5 produced a rank-16 LoRA adapter (general instruction
-data, contamination-guarded) and a verified adapter-attach load path.
+\paragraph{Extension artifacts.} Adding the counts omitted above: EXT-2 covered
+n=200 JudgeBench pairs per variant, and EXT-3's self-quantized W8A8 checkpoint is
+8.7\,GiB on disk.
 
 \end{document}
