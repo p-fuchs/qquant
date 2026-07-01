@@ -88,13 +88,13 @@ budget.
 \section{Experimental Setup}
 
 \paragraph{Model and variants.} All experiments use Qwen2.5-7B-Instruct
-\citep{qwen25} at a pinned commit, run on a single on-demand RTX~4090
-(24\,GB, sm\_89). Every variant, including the bf16 baseline, runs on the same GPU,
+\citep{qwen25} at a pinned commit, run on a single RTX~4090
+(24\,GB). Every variant, including the bf16 baseline, runs on the same GPU,
 so the speed comparison is apples-to-apples with no cross-hardware caveat.
 Table~\ref{tab:variants} lists the five core variants. LLM.int8() and NF4 quantize
 the baseline weights at load time, so their disk footprint is the full bf16
 checkpoint; GPTQ and AWQ are official pre-quantized 4-bit checkpoints served by the
-gptqmodel Marlin kernels through optimum.
+gptqmodel Marlin kernels.
 
 \paragraph{Benchmarks and protocol.} Quality is measured with the EleutherAI
 lm-evaluation-harness \citep{lmeval}: MMLU \citep{mmlu} (accuracy, aggregated with
@@ -253,8 +253,7 @@ the high-speed, low-memory corner, and bnb-int8 is Pareto-dominated.}
 We implemented all five catalogued extensions as a gated, separate code layer
 (\texttt{qquant.ext}) that reuses the core harness without touching it, and ran the
 four that fit the GPU budget; adding Mistral-7B as a second model was skipped
-because it would re-spend the entire compute budget. The whole extension run cost
-under \$1 of GPU time.
+because it would re-spend the entire compute budget.
 
 \paragraph{EXT-2: JudgeBench.} We evaluate each variant as a pairwise judge on
 JudgeBench \citep{judgebench}, a set of objective-correctness pairs, scoring
@@ -272,7 +271,7 @@ same C4 calibration set as our 4-bit self-quant recipes, using llm-compressor
 things emerged on the HF runtime. First, compressed-tensors decompresses W8A8 to a
 bf16-resident tensor (15.2\,GiB in VRAM), so it yields disk-only savings and no
 inference-memory benefit. Second, its \texttt{generate()} path is severely
-runtime-confounded on sm\_89, running at about 4.5\,s per iteration, so a full
+runtime-confounded, running at about 4.5\,s per iteration, so a full
 quality sweep is impractical: the slowdown is itself the result. W8A8 is best understood as a vLLM or kernel-path technique, not an
 HF-generate one.
 
@@ -335,7 +334,7 @@ are the natural next steps.
 In line with the course policy, we document our use of AI tools. The research
 design (the variant matrix, the quality--memory--speed framing, and the fairness
 and determinism protocol) is ours. We used an agentic coding assistant for
-supporting engineering: the torch-free orchestration layer and vast.ai run drivers,
+supporting engineering: the torch-free orchestration layer and cloud-GPU run drivers,
 the evaluation and profiling harness scaffolding, the extension code layer, and the
 figure- and table-generation scripts. Every quantitative claim in this report was
 extracted programmatically from the committed result files and cross-checked, and
@@ -349,7 +348,7 @@ metrics before inclusion.
 \appendix
 \section{Reproducibility and Selected Efficiency Details}
 
-\paragraph{Setup.} Single on-demand RTX~4090 (24\,GB, sm\_89) on vast.ai; torch
+\paragraph{Setup.} Single RTX~4090 (24\,GB); torch
 2.12.1+cu126, transformers 5.10.1, lm-eval 0.4.3 (0.4.12 for HumanEval, whose
 code-execution harness requires the newer release), bitsandbytes 0.49.2,
 gptqmodel 7.1.0, compressed-tensors 0.17.1. Greedy decoding; seeds fixed
