@@ -6,6 +6,51 @@ The Qwen2.5-7B quantization study. Specs are the source of truth: read
 rented **vast.ai RTX 4090**; the orchestration layer (`qquant.orchestrate`) is torch-free
 so it runs on the dev laptop.
 
+## Architecture (the big picture)
+
+The study evaluates **Qwen2.5-7B-Instruct** across **7 variants × 4 task families = 420
+result cells**, comparing quality (MMLU/GSM8K/HumanEval/IFEval) and efficiency
+(VRAM/throughput/latency). **The filesystem is the unit of state**: one JSON per cell under
+`results/`, so any run is resumable by recomputing only `missing_cells`.
+
+**Two hard invariants gate everything — internalize them before editing:**
+
+1. **Torch-free core.** `qquant.*` and `qquant.orchestrate.*` must NEVER import torch
+   (enforced by `tests/test_import_torch_free.py` + CI). All GPU code lives behind the
+   separate entry points (`qquant.eval`, `qquant.efficiency`, `qquant.ext`) and
+   `scripts/spike/`. The umbrella `qquant` CLI and the orchestrator run on the laptop.
+2. **Single source of truth = `contracts.md` + Spec 01 code.** Ids, on-disk paths, the cell
+   schema, and the resume predicate are declared **once** and imported everywhere. Never
+   reimplement `cell_path`, `is_cell_done`, the variant/task id lists, or the schema — import
+   them. If a contract changes, change `docs/specs/contracts.md` and the Spec-01 code in the
+   same commit.
+
+**Module map (`src/qquant/`, torch-free core in bold):**
+
+| Module | Role |
+|---|---|
+| **`registry.py` + `registries/*.yaml`** | canonical `VARIANT_IDS`/`TASK_IDS`, `Variant`/`Task` dataclasses, YAML loaders |
+| **`paths.py`** | `cell_path(...)` / `Paths` — the only way to build a result path |
+| **`schemas/` + `config.py`** | cell JSON Schema (v1), `validate_cell`, `RunConfig`, `cell_provenance` (keyed by `PROVENANCE_KEYS`) |
+| **`matrix.py`** | `Cell`, `expand_matrix` (MMLU→57), `is_cell_done` / `missing_cells` — the SSOT resume predicate |
+| **`cli.py`** | umbrella `qquant` CLI: `variants`/`tasks`/`matrix`/`audit`/`version` |
+| **`orchestrate/`** | `vastai.py` (typed wrapper over the `vastai` CLI) + `spike.py` (`qquant-spike` go/no-go) — torch-free, shells out |
+| `eval/` | `qquant-eval`: lm-eval driver — `runner`, `hflm` (HF backend), `datasets`, `metrics`, `policy` (per-task chat-template/few-shot), `results` writer |
+| `models/` | `loaders.py` (per-variant model load: bnb/gptq/awq/compressed-tensors), `greedy.py` (forced-greedy determinism) |
+| `efficiency/` | `qquant-profile`: VRAM/throughput/latency profiler + its **carve-out** schema/path/predicate (`efficiency.json` per variant) |
+| `aggregate/stats.py` | weighted MMLU aggregation, paired **McNemar** significance |
+| `ext/` | `qquant-ext`: Spec-12 gated extensions (W8A8, KV-cache, QLoRA, JudgeBench) — separate `results-ext/` root, `variants.ext.yaml`/`tasks.ext.yaml` |
+
+**Two separate uv projects by design** (see decision log): root `./pyproject.toml` = the
+eval/inference env; `quant/` = the isolated `llm-compressor` env that *produces* self-quant
+checkpoints (its tight `transformers` pins can't co-resolve in one lock). The root env only
+needs `compressed-tensors` to *load* what `quant/` produces.
+
+**The actual box run is `scripts/run/run_box.sh`** (not the orchestrator): the local driver
+scp's the working tree + pinned venv to `/workspace`, then this script runs efficiency then
+quality eval **per variant** so artifacts are written incrementally (a mid-run `stop` loses
+nothing). Self-quant variants are excluded from the minimal-5 run.
+
 ## DIRECTIVE: record vast.ai learnings here
 
 vast.ai's CLI and runtime have many non-obvious behaviors that have already cost real
@@ -110,6 +155,23 @@ Keep entries terse and concrete.
 
 ## Commands
 
-- `uv sync` · `uv run pytest` · `uv run ruff check . && uv run ruff format --check .`
-- Torch-free guard: `qquant.*` and `qquant.orchestrate.*` must never import torch (enforced
-  by `tests/test_import_torch_free.py` + CI). GPU code lives only in `scripts/spike/`.
+Local dev (torch-free, works on macOS with no GPU):
+
+- `uv sync` — install the torch-free core + dev tools (`uv sync --group gpu` is Linux+CUDA only).
+- `uv run pytest` — full suite; `gpu`-marked tests auto-skip without CUDA.
+- `uv run pytest tests/test_matrix.py` — a single file; add `-k <name>` for one test,
+  `-m gpu` to select GPU tests (they run only on the box).
+- `uv run ruff check . && uv run ruff format --check .` — lint + format gate (line length 88).
+- `uv run qquant variants | tasks | matrix` — inspect the registries / cell counts.
+- `uv run qquant audit --results results [--list]` — report missing/stale result cells.
+
+GPU entry points (run on the vast.ai box, via `python -m` against `/workspace/venv`):
+
+- `python -m qquant.eval.cli --variant <id> --results <root>` — quality eval (`qquant-eval`).
+- `python -m qquant.efficiency.cli --variant <id> --results <root>` — profiler (`qquant-profile`).
+- `python -m qquant.ext.cli ...` — Spec-12 extensions (`qquant-ext`, `results-ext/` root).
+- `scripts/run/run_box.sh` — the actual full box run (efficiency then quality, per variant).
+
+CI gate (`.github/workflows/ci.yml`): ruff + pytest + the torch-free import guard
+(`tests/test_import_torch_free.py`). GPU code lives only in the separate entry points and
+`scripts/spike/`; never import torch from `qquant.*` or `qquant.orchestrate.*`.
