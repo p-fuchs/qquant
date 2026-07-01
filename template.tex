@@ -49,10 +49,11 @@ overall trade-off: they are the only variants that cut both disk and GPU memory
 while staying close to baseline speed, at a modest quality cost. Two results run
 against intuition: LLM.int8() is the slowest variant of all and saves no disk, and
 NF4 saves memory but still decodes slower than bf16. Together they show that
-quantization is mainly a memory technique rather than a speed one. We also
-implement and run four catalogued extensions on the same box: a JudgeBench
-meta-evaluation, W8A8/SmoothQuant self-quantization, a quantized KV cache, and
-QLoRA recovery. These sharpen the memory-versus-speed picture.
+quantization is mainly a memory technique rather than a speed one. We also run
+three catalogued extensions on the same box: a JudgeBench meta-evaluation,
+W8A8/SmoothQuant self-quantization, and a quantized KV cache. These sharpen the
+memory-versus-speed picture, while the planned recovery study did not fit our
+time and GPU budget.
 \end{abstract}
 
 \section{Introduction and Research Questions}
@@ -61,9 +62,9 @@ Many LLMs are too expensive to serve in full precision, and post-training
 quantization is the standard remedy. Several practical methods exist: LLM.int8()
 \citep{llmint8} for 8-bit weights with mixed-precision handling of outliers; GPTQ
 \citep{gptq} and AWQ \citep{awq}, which use a small calibration set to push weights
-to 4 bits; SmoothQuant \citep{smoothquant} for 8-bit weights and activations; the
-NF4 data type from QLoRA \citep{qlora} for 4-bit storage in the bitsandbytes
-ecosystem; and KV-cache quantization such as KIVI \citep{kivi} for long-context
+to 4 bits; SmoothQuant \citep{smoothquant} for 8-bit weights and activations; NF4
+for 4-bit storage in the bitsandbytes ecosystem; and KV-cache quantization such
+as KIVI \citep{kivi} for long-context
 inference. None of these is automatically beneficial: the same 4-bit model can
 be smaller yet slower, or degrade unevenly across capabilities, so the
 practical trade-off is what we set out to measure. We organise the study around
@@ -76,14 +77,13 @@ four questions from our proposal:
   following) more sensitive to quantization than others?
 \item[\textbf{RQ3}] Does quantization improve real inference speed, or mainly
   reduce memory?
-\item[\textbf{RQ4}] (optional) Can light QLoRA-style adaptation recover quality
+\item[\textbf{RQ4}] (optional) Can light adapter-based adaptation recover quality
   lost after 4-bit quantization?
 \end{enumerate}
 
 Our core study is the proposal's minimal successful version (one model, five
-variants, four benchmarks, full efficiency profiling), and we then implement the
-catalogued extensions as a gated code layer and run the four that fit our GPU
-budget.
+variants, four benchmarks, full efficiency profiling), followed by the optional
+extensions that fit our time and GPU budget.
 
 \section{Experimental Setup}
 
@@ -117,7 +117,7 @@ Variant & Method & Precision & Source \\
 \midrule
 \texttt{bf16}          & half-precision baseline                 & W16     & reference \\
 \texttt{bnb-int8}      & \texttt{LLM.int8()} \citep{llmint8}      & W8 (load-time)  & \texttt{bitsandbytes} \\
-\texttt{bnb-nf4}       & NF4 + double-quant \citep{qlora}         & W4 (load-time)  & \texttt{bitsandbytes} \\
+\texttt{bnb-nf4}       & NF4 + double-quant                       & W4 (load-time)  & \texttt{bitsandbytes} \\
 \texttt{gptq-official} & GPTQ \citep{gptq}                        & W4 (g128)       & official Qwen ckpt \\
 \texttt{awq-official}  & AWQ \citep{awq}                          & W4 (g128)       & official Qwen ckpt \\
 \bottomrule
@@ -248,9 +248,10 @@ the high-speed, low-memory corner, and bnb-int8 is Pareto-dominated.}
 \section{Extensions}
 
 Beyond the core study, we considered five optional extensions: JudgeBench,
-W8A8/SmoothQuant, a quantized KV cache, QLoRA recovery, and a second-model run.
-We ran the four that fit the GPU budget; adding Mistral-7B as a second model was
-skipped because it would have repeated the full compute campaign.
+W8A8/SmoothQuant, a quantized KV cache, adapter-based recovery, and a
+second-model run. We ran the three that fit the time and GPU budget; the recovery
+study and Mistral-7B second-model run would have required a larger compute
+campaign.
 
 \paragraph{EXT-2: JudgeBench.} We evaluate each variant as a pairwise judge on
 JudgeBench \citep{judgebench}, a set of objective-correctness pairs, scoring
@@ -282,15 +283,11 @@ quantized KV cache trades a modest memory saving for a large (\textasciitilde20$
 speed cost on the HF backend, and is only worthwhile with a fused kernel path such as KIVI
 \citep{kivi} or vLLM.
 
-\paragraph{EXT-5: QLoRA recovery (RQ4).} We verified the full QLoRA
-\citep{qlora,lora} recovery pipeline end-to-end: a LoRA adapter of rank 16, trained
-on the frozen NF4 base over general instruction data and guarded by a fail-fast
-check that the training corpus never overlaps the evaluation benchmarks, together
-with an adapter-aware load path. Training converged, and the adapted model loads
-with the adapter active and generates coherently. A full recovery
-measurement (enough training steps to move benchmark accuracy, followed by a
-re-evaluation) is a longer campaign we leave to future work; here we contribute
-the validated, contamination-safe machinery.
+\paragraph{Planned recovery study (RQ4).} We planned to test whether light
+adapter-based adaptation could recover quality lost after 4-bit quantization, but
+did not have enough time or GPU budget for benchmark-scale training and
+re-evaluation. We therefore leave RQ4 as future work rather than report it as a
+completed result.
 
 \begin{figure}[H]
 \centering
@@ -326,8 +323,8 @@ expose a quality failure from quantization, but W8A8 and int4 KV-cache experimen
 showed that backend support matters as much as bit-width. Our main limitations are
 the single-model, single-seed evaluation and the HF-runtime confounds for
 self-quantization and KV-cache paths; multi-seed runs, the second model
-(Mistral-7B \citep{mistral7b}), fused-kernel serving tests, and a full QLoRA
-recovery measurement (RQ4) are the natural next steps.
+(Mistral-7B \citep{mistral7b}), fused-kernel serving tests, and the omitted
+recovery study (RQ4) are the natural next steps.
 
 \section*{LLM Usage}
 In line with the course policy, we document our use of AI tools. The research
