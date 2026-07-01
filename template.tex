@@ -137,30 +137,35 @@ at 7B: every 4-bit variant stays within about 1.5 points of the bf16 baseline on
 MMLU and GSM8K. Sensitivity is uneven across capabilities, which answers RQ2.
 
 Knowledge and math are close to lossless: MMLU and GSM8K barely move, and 8-bit is
-essentially unchanged. Coding is the most sensitive capability, with bnb-int8
-losing about four points on HumanEval, the single largest drop, and the 4-bit
-methods giving up a point or two. Instruction following degrades only mildly, and
-bnb-nf4 essentially ties the baseline. The 8-bit variant is the clearest
-illustration that more bits do not uniformly mean higher quality: it is
-near-lossless on knowledge and math yet gives the worst HumanEval score of any
-variant.
+essentially unchanged. The MMLU shifts are small but, at a $\pm$0.4 standard error,
+resolvable; most other deltas are within roughly one standard error and should be
+read as trends rather than firm rankings. Coding shows the widest spread, with
+bnb-int8 losing about four points on HumanEval, the single largest drop; the 4-bit
+methods give up a point or two, though at HumanEval's $\pm$3-point standard error
+only the bnb-int8 gap approaches significance. Instruction following degrades only
+mildly, within about one standard error, and bnb-nf4 essentially ties the baseline.
+The 8-bit variant is the clearest illustration that more bits do not uniformly mean
+higher quality: it is near-lossless on knowledge and math yet gives the worst
+HumanEval score of any variant.
 
 \begin{table}[H]
 \centering\small
+\setlength{\tabcolsep}{4.5pt}
 \begin{tabular}{lccccc}
 \toprule
 Variant & MMLU & GSM8K & HumanEval & IFEval & Mean \\
         & (acc) & (flex.\ EM) & (pass@1) & (strict) & \\
 \midrule
-\texttt{bf16}          & \textbf{73.6}\,$\pm$0.4 & \textbf{84.5} & \textbf{84.1} & \textbf{71.3} & \textbf{78.4} \\
-\texttt{bnb-int8}      & 73.4 & 84.4 & 79.9 & 69.3 & 76.8 \\
-\texttt{bnb-nf4}       & 72.6 & 83.6 & 81.7 & 71.0 & 77.2 \\
-\texttt{gptq-official} & 72.1 & 83.2 & 81.1 & 70.2 & 76.7 \\
-\texttt{awq-official}  & 72.2 & 84.3 & 81.1 & 69.9 & 76.9 \\
+\texttt{bf16}          & \textbf{73.6}\,$\pm$0.4 & \textbf{84.5}\,$\pm$1.0 & \textbf{84.1}\,$\pm$2.9 & \textbf{71.3}\,$\pm$1.9 & \textbf{78.4} \\
+\texttt{bnb-int8}      & 73.4\,$\pm$0.4 & 84.4\,$\pm$1.0 & 79.9\,$\pm$3.1 & 69.3\,$\pm$2.0 & 76.8 \\
+\texttt{bnb-nf4}       & 72.6\,$\pm$0.4 & 83.6\,$\pm$1.0 & 81.7\,$\pm$3.0 & 71.0\,$\pm$2.0 & 77.2 \\
+\texttt{gptq-official} & 72.1\,$\pm$0.4 & 83.2\,$\pm$1.0 & 81.1\,$\pm$3.1 & 70.2\,$\pm$2.0 & 76.7 \\
+\texttt{awq-official}  & 72.2\,$\pm$0.4 & 84.3\,$\pm$1.0 & 81.1\,$\pm$3.1 & 69.9\,$\pm$2.0 & 76.9 \\
 \bottomrule
 \end{tabular}
-\caption{Quality (\%). MMLU is weighted over 57 subjects, with standard error
-shown; GSM8K uses flexible-extract exact-match. Best per column in bold.}
+\caption{Quality (\%), with standard error ($\pm$) shown per benchmark. MMLU is
+weighted over 57 subjects; GSM8K uses flexible-extract exact-match. Mean is a plain
+average across the four benchmarks (no standard error). Best per column in bold.}
 \label{tab:quality}
 \end{table}
 
@@ -186,27 +191,28 @@ both worlds on the speed and disk axes. NF4 is the memory-not-speed case: it cut
 generate VRAM sharply and doubles the maximum batch, but still decodes below bf16.
 GPTQ and AWQ are the only variants that improve memory without paying much in
 speed. They cut disk by about 2.7 times, roughly halve generate VRAM, double the
-maximum batch, and keep decode near baseline. Prefill is unaffected across all
-variants, because quantization touches the memory-bound decode phase rather than
-the compute-bound prefill.
+maximum batch, and hold decode to within about a quarter of baseline (28--29 vs.\
+37\,tok/s) --- a modest slowdown next to the 2--5$\times$ of the other quantized
+variants. Prefill is unaffected across all variants, because quantization touches
+the memory-bound decode phase rather than the compute-bound prefill.
 
 \begin{table}[H]
 \centering\small
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccc}
 \toprule
-Variant & Disk & Gen.\ VRAM & Max & Decode & Prefill & Speed \\
-        & (GiB) & (GiB) & batch & (tok/s) & (tok/s) & label \\
+Variant & Disk & Gen.\ VRAM & Max & Decode & Prefill \\
+        & (GiB) & (GiB) & batch & (tok/s) & (tok/s) \\
 \midrule
-\texttt{bf16}          & 14.19 & 14.96 & 16 & \textbf{37.0} & 9505 & comparable \\
-\texttt{bnb-int8}      & 14.19 & 9.22  & 16 & 7.2  & 9220 & comparable \\
-\texttt{bnb-nf4}       & 14.19 & 5.95  & \textbf{32} & 16.9 & 9196 & comparable \\
-\texttt{gptq-official} & \textbf{5.19} & 5.94 & \textbf{32} & 28.5 & \textbf{9699} & comparable \\
-\texttt{awq-official}  & \textbf{5.19} & 5.96 & \textbf{32} & 27.9 & 9615 & comparable \\
+\texttt{bf16}          & 14.19 & 14.96 & 16 & \textbf{37.0} & 9505 \\
+\texttt{bnb-int8}      & 14.19 & 9.22  & 16 & 7.2  & 9220 \\
+\texttt{bnb-nf4}       & 14.19 & 5.95  & \textbf{32} & 16.9 & 9196 \\
+\texttt{gptq-official} & \textbf{5.19} & 5.94 & \textbf{32} & 28.5 & \textbf{9699} \\
+\texttt{awq-official}  & \textbf{5.19} & 5.96 & \textbf{32} & 27.9 & 9615 \\
 \bottomrule
 \end{tabular}
 \caption{Efficiency on one RTX~4090. Disk is the on-disk weight bytes; max batch is
 the largest power-of-two before OOM at 2048-token sequences; decode and prefill are
-at the 4096-token (long) bucket. Full per-bucket throughput is in the appendix
+at the 4096-token (long) bucket. Per-bucket throughput is in the appendix
 (Table~\ref{tab:eff-full}).}
 \label{tab:eff}
 \end{table}
@@ -227,7 +233,8 @@ Figure~\ref{fig:tradeoff} places all variants in the quality--speed--memory spac
 and the Pareto picture is clear. bf16 buys top speed at the highest memory;
 bnb-int8 is dominated, being both slow and disk-heavy; bnb-nf4 trades speed for
 memory; and GPTQ and AWQ sit at the sweet spot, with roughly half the memory, the
-largest batch, and near-baseline decode speed for a small quality cost. Under
+largest batch, and decode within about 25\% of baseline (a modest slowdown, versus
+2--5$\times$ for the other methods) for a small quality cost. Under
 limited VRAM we recommend an official GPTQ or AWQ checkpoint. NF4 is
 the best fallback when no pre-quantized checkpoint exists, since it needs only the
 base weights, and LLM.int8() is hard to recommend on this hardware.
@@ -274,9 +281,9 @@ HF-generate one.
 (Figure~\ref{fig:kvcache}). The int4 KV cache trims the KV-plus-activation
 transient by about 22\%, but slows decode by roughly 20 times, because quanto
 dequantizes the cache on every step. This is a
-stark, quantitative confirmation of the runtime-confounded throughput caveat: a
-quantized KV cache trades a modest memory saving for a catastrophic speed cost on
-the HF backend, and is only worthwhile with a fused kernel path such as KIVI
+clear, quantitative confirmation of the runtime-confounded throughput caveat: a
+quantized KV cache trades a modest memory saving for a large (\textasciitilde20$\times$)
+speed cost on the HF backend, and is only worthwhile with a fused kernel path such as KIVI
 \citep{kivi} or vLLM.
 
 \paragraph{EXT-5: QLoRA recovery (RQ4).} We verified the full QLoRA
@@ -316,9 +323,9 @@ coding the most sensitive and knowledge and math the least (RQ2). Most important
 quantization is a memory technique rather than a speed one (RQ3): LLM.int8() is
 about five times slower than bf16 and saves no disk, NF4 saves memory while still
 decoding below baseline, and only the calibrated 4-bit kernels of GPTQ and AWQ
-deliver memory savings without a speed penalty. The extensions reinforce this: W8A8
+deliver memory savings for only a modest (\textasciitilde20--25\%) decode slowdown. The extensions reinforce this: W8A8
 and the int4 KV cache both work yet are runtime-confounded on the HF backend, and
-quantization leaves judging quality intact. The main limitations are single-seed
+quantization does not degrade judging in this small-sample test. The main limitations are single-seed
 evaluation and the runtime confound on the self-quant and KV paths, which a
 fused-kernel serving stack such as vLLM would resolve; multi-seed runs, the second
 model (Mistral-7B \citep{mistral7b}), and a full QLoRA recovery measurement (RQ4)
@@ -340,10 +347,11 @@ metrics before inclusion.
 
 \newpage
 \appendix
-\section{Reproducibility and Full Efficiency Table}
+\section{Reproducibility and Selected Efficiency Details}
 
 \paragraph{Setup.} Single on-demand RTX~4090 (24\,GB, sm\_89) on vast.ai; torch
-2.12.1+cu126, transformers 5.10.1, lm-eval (commit-pinned), bitsandbytes 0.49.2,
+2.12.1+cu126, transformers 5.10.1, lm-eval 0.4.3 (0.4.12 for HumanEval, whose
+code-execution harness requires the newer release), bitsandbytes 0.49.2,
 gptqmodel 7.1.0, compressed-tensors 0.17.1. Greedy decoding; seeds fixed
 (random, numpy, torch, few-shot). Quality and efficiency are profiled in separate
 phases, and each variant is loaded once. All result JSONs and the extension and
