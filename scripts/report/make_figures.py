@@ -69,11 +69,11 @@ def main():
                label=LBL[i], color=CLR[i])
     ax.set_xticks(x)
     ax.set_xticklabels(["MMLU", "GSM8K", "HumanEval", "IFEval"])
-    ax.set_ylabel("Accuracy / pass@1 (\\%)")
+    ax.set_ylabel("Accuracy / pass@1 (%)")
     ax.set_ylim(60, 90)
-    ax.legend(ncol=5, fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, 1.16),
+    ax.legend(ncol=5, fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, 1.10),
               frameon=False, columnspacing=1.0)
-    ax.set_title("Quality by benchmark and quantization variant", pad=22)
+    ax.set_title("Quality by benchmark and quantization variant", pad=32)
     fig.savefig(f"{FIG}/fig_quality.pdf")
     plt.close(fig)
 
@@ -101,16 +101,17 @@ def main():
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6.4, 3.6))
+    meanq = {v: sum(M[v][b] for b in benches) / 4 * 100 for v in V}
     for i, v in enumerate(V):
-        ax.scatter(M[v]["decode_long"], M[v]["mmlu"] * 100,
+        ax.scatter(M[v]["decode_long"], meanq[v],
                    s=M[v]["generate_peak_gib"] * 60, color=CLR[i],
                    edgecolor="k", lw=0.6, alpha=0.85, zorder=3)
-        ax.annotate(LBL[i], (M[v]["decode_long"], M[v]["mmlu"] * 100),
+        ax.annotate(LBL[i], (M[v]["decode_long"], meanq[v]),
                     xytext=(6, 6), textcoords="offset points", fontsize=9)
     ax.set_xlabel("Decode throughput (tok/s)  $\\rightarrow$ faster")
-    ax.set_ylabel("MMLU accuracy (\\%)")
+    ax.set_ylabel("Mean quality (%)")
     ax.set_title("Quality–speed–memory trade-off (marker area $\\propto$ generate VRAM)")
-    ax.set_ylim(71.5, 74.2)
+    ax.set_ylim(76.2, 79.0)
     fig.savefig(f"{FIG}/fig_tradeoff.pdf")
     plt.close(fig)
 
@@ -121,8 +122,8 @@ def main():
            alpha=0.45, hatch="xx")
     ax.set_xticks(xp)
     ax.set_xticklabels(LBL, rotation=30)
-    ax.set_ylabel("\\%")
-    ax.set_title("EXT-2 JudgeBench: pairwise judge accuracy \\& position consistency")
+    ax.set_ylabel("%")
+    ax.set_title("EXT-2 JudgeBench: pairwise judge accuracy & position consistency")
     ax.legend(handles=[Patch(fc="#888", label="judge accuracy"),
                        Patch(fc="#888", alpha=0.45, hatch="xx", label="position consistency")],
               fontsize=8.5, frameon=False)
@@ -137,7 +138,7 @@ def main():
     spd = [c["decode_tok_per_s"] for c in kvd]
     a1.bar(labels, kv, color=["#444444", "#d95f02"])
     a1.set_ylabel("KV+activation transient (GiB)")
-    a1.set_title("(a) KV memory $\\downarrow$22\\%")
+    a1.set_title("(a) KV memory $\\downarrow$22%")
     for i, xx in enumerate(kv):
         a1.text(i, xx + 0.01, f"{xx:.2f}", ha="center", fontsize=9)
     a2.bar(labels, spd, color=["#444444", "#d95f02"])
